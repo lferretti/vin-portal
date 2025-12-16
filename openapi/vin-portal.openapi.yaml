@@ -1,0 +1,941 @@
+openapi: 3.0.3
+info:
+  title: Consumer VIN Add Portal API
+  version: 1.0.0
+  description: |
+    Public, consumer-facing API to authenticate a warranty contract and add one additional VIN (one-time, irreversible).
+    
+    ### Core rules
+    - Contract authentication is **exact match** on contract fields.
+    - One additional VIN **ever** per contract; once committed, it cannot be changed.
+    - OTP is required **only when risk signals are triggered**.
+    - Commit uses a **hybrid model**: immediate commit when dependencies succeed, or returns PENDING and completes asynchronously when dependencies are unavailable.
+
+    ### Response Envelope
+    All endpoints return a standard envelope:
+    ```json
+    {"correlationId":"...","success":true,"data":{},"error":null}
+    ```
+servers:
+  - url: /api/v1
+    description: Default API base path
+
+tags:
+  - name: Contract
+    description: Consumer contract authentication and session management
+  - name: OTP
+    description: Step-up verification for suspicious requests
+  - name: VIN
+    description: VIN decode, eligibility checks, and commit workflow
+  - name: Admin
+    description: Internal support/admin endpoints (placeholder; secure behind internal auth)
+
+paths:
+  /contract/authenticate:
+    post:
+      tags: [Contract]
+      summary: Authenticate contract using exact-match fields
+      description: |
+        Validates contract details against the external contract verification system.
+        If suspicious signals are detected, returns `AUTH_OTP_REQUIRED` and an OTP challenge must be completed.
+      operationId: authenticateContract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticateContractRequest'
+            examples:
+              example:
+                value:
+                  contractNumber: "A1B2C3D4E5F6G7H8"
+                  lastName: "FERRETTI"
+                  zip: "30301"
+      responses:
+        '200':
+          description: Authentication successful (no OTP required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeAuthenticateSuccess'
+        '401':
+          description: Authentication failed (no match or OTP required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+              examples:
+                noMatch:
+                  value:
+                    correlationId: "c6b0833d-0b3e-47c6-8c5f-5e6f2d0a35f9"
+                    success: false
+                    data: null
+                    error:
+                      code: "AUTH_NO_MATCH"
+                      message: "We couldn’t find an exact match. Please verify your details."
+                      details:
+                        retryAfterSeconds: 0
+                otpRequired:
+                  value:
+                    correlationId: "f7b1b03d-bebd-41c5-a1ab-70c0e4bcd913"
+                    success: false
+                    data: null
+                    error:
+                      code: "AUTH_OTP_REQUIRED"
+                      message: "Additional verification is required."
+                      details:
+                        contractContextId: "bf8f6bff-b2e5-45ad-83d7-4075dc32b26b"
+                        otpChallengeId: "2e0c0dfc-9cb3-4b6f-86de-4e6f6fe0d46a"
+                        maskedDestination: "***-***-1234"
+                        channel: "sms"
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /otp/send:
+    post:
+      tags: [OTP]
+      summary: Send OTP to masked destination
+      description: |
+        Sends an OTP to the destination on file for this contract (SMS or email). This is only used when OTP is required.
+      operationId: sendOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequest'
+      responses:
+        '200':
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOtpSendResponse'
+        '400':
+          description: Invalid OTP challenge state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '429':
+          description: Rate limited / locked out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /otp/verify:
+    post:
+      tags: [OTP]
+      summary: Verify OTP code
+      description: |
+        Verifies the OTP. If successful, returns a consumer session token for subsequent actions.
+      operationId: verifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequest'
+      responses:
+        '200':
+          description: OTP verified and session issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeOtpVerifySuccess'
+        '401':
+          description: Invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '429':
+          description: Locked out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /vin/decode:
+    post:
+      tags: [VIN]
+      summary: Decode VIN to Year/Make/Model
+      operationId: decodeVin
+      security:
+        - consumerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VinDecodeRequest'
+      responses:
+        '200':
+          description: Decoded VIN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeVinDecodeResponse'
+        '400':
+          description: VIN invalid or decode failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /vin/eligibility:
+    post:
+      tags: [VIN]
+      summary: Check if VIN is eligible for the contract
+      operationId: checkVinEligibility
+      security:
+        - consumerSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VinEligibilityRequest'
+      responses:
+        '200':
+          description: Eligible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeVinEligibilityAllowed'
+        '400':
+          description: VIN invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '409':
+          description: Ineligible (business rule failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '503':
+          description: Eligibility dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /vin/commit:
+    post:
+      tags: [VIN]
+      summary: Commit an additional VIN (one-time, irreversible)
+      description: |
+        Attempts to commit the VIN association. Uses a hybrid model:
+        - If dependencies are healthy, returns COMMITTED_LOCKED immediately.
+        - If dependencies fail/unavailable, returns PENDING and completes via background retries.
+        
+        **Idempotency:** client must pass `X-Idempotency-Key` header. Replays return the original request status/result.
+      operationId: commitVin
+      security:
+        - consumerSession: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VinCommitRequest'
+      responses:
+        '200':
+          description: Commit accepted (may be committed or pending)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeVinCommitResponse'
+        '400':
+          description: Invalid request (missing confirmation, VIN invalid)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '409':
+          description: Contract already locked or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /vin/request/{requestId}:
+    get:
+      tags: [VIN]
+      summary: Get the status of a VIN add request
+      operationId: getVinRequestStatus
+      security:
+        - consumerSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Request status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeVinRequestStatus'
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /admin/contracts:
+    get:
+      tags: [Admin]
+      summary: Search contract contexts (admin)
+      description: |
+        Internal support/admin search. Must be protected behind internal auth in production.
+      operationId: adminSearchContracts
+      security:
+        - adminSession: []
+      parameters:
+        - name: contractNumber
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: externalContractId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: requestId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeAdminContractSearch'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /admin/requests/{requestId}:
+    get:
+      tags: [Admin]
+      summary: View request details + audit (admin)
+      operationId: adminGetRequest
+      security:
+        - adminSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Request detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeAdminRequestDetail'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /admin/requests/{requestId}/note:
+    post:
+      tags: [Admin]
+      summary: Add an admin note (admin)
+      operationId: adminAddNote
+      security:
+        - adminSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminNoteRequest'
+      responses:
+        '200':
+          description: Note added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeAdminNoteResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+components:
+  securitySchemes:
+    consumerSession:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Consumer contract session token (short-lived, scoped to contract context)
+    adminSession:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin session token (placeholder; integrate with internal SSO/Okta later)
+
+  parameters:
+    IdempotencyKeyHeader:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        description: UUID or stable token for idempotent commits
+      example: "b4a0ab84-1c6a-4a7e-8f7b-0c6b3a6a4b4a"
+
+  schemas:
+    # ---------- Envelope ----------
+    EnvelopeBase:
+      type: object
+      required: [correlationId, success]
+      properties:
+        correlationId:
+          type: string
+          format: uuid
+        success:
+          type: boolean
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    EnvelopeError:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          properties:
+            data:
+              nullable: true
+            error:
+              $ref: '#/components/schemas/ApiError'
+          required: [data, error]
+
+    # ---------- Contract ----------
+    AuthenticateContractRequest:
+      type: object
+      required: [contractNumber, lastName, zip]
+      properties:
+        contractNumber:
+          type: string
+          minLength: 6
+          maxLength: 64
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 64
+        zip:
+          type: string
+          description: US ZIP code; exact match required
+          pattern: '^\d{5}(-\d{4})?$'
+
+    ContractSummary:
+      type: object
+      properties:
+        primaryVinMasked:
+          type: string
+          example: "1HG******1234"
+        hasAdditionalVin:
+          type: boolean
+
+    OtpSummary:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [NOT_REQUIRED, REQUIRED, SENT, VERIFIED, LOCKED_OUT, EXPIRED]
+        otpChallengeId:
+          type: string
+          format: uuid
+          nullable: true
+        maskedDestination:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+          enum: [sms, email]
+
+    AuthenticateSuccessData:
+      type: object
+      required: [contractContextId, sessionToken, sessionExpiresAt, otp]
+      properties:
+        contractContextId:
+          type: string
+          format: uuid
+        sessionToken:
+          type: string
+        sessionExpiresAt:
+          type: string
+          format: date-time
+        otp:
+          $ref: '#/components/schemas/OtpSummary'
+        contractSummary:
+          $ref: '#/components/schemas/ContractSummary'
+
+    EnvelopeAuthenticateSuccess:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/AuthenticateSuccessData'
+            error:
+              nullable: true
+
+    # ---------- OTP ----------
+    OtpSendRequest:
+      type: object
+      required: [otpChallengeId]
+      properties:
+        otpChallengeId:
+          type: string
+          format: uuid
+
+    OtpSendData:
+      type: object
+      required: [otpChallengeId, status, expiresAt]
+      properties:
+        otpChallengeId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [SENT]
+        expiresAt:
+          type: string
+          format: date-time
+
+    EnvelopeOtpSendResponse:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/OtpSendData'
+            error:
+              nullable: true
+
+    OtpVerifyRequest:
+      type: object
+      required: [otpChallengeId, code]
+      properties:
+        otpChallengeId:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: 6-digit OTP
+          pattern: '^\d{6}$'
+
+    OtpVerifySuccessData:
+      type: object
+      required: [contractContextId, sessionToken, sessionExpiresAt, otp]
+      properties:
+        contractContextId:
+          type: string
+          format: uuid
+        sessionToken:
+          type: string
+        sessionExpiresAt:
+          type: string
+          format: date-time
+        otp:
+          $ref: '#/components/schemas/OtpSummary'
+
+    EnvelopeOtpVerifySuccess:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/OtpVerifySuccessData'
+            error:
+              nullable: true
+
+    # ---------- VIN ----------
+    VinDecodeRequest:
+      type: object
+      required: [vin]
+      properties:
+        vin:
+          type: string
+          description: 17-character VIN (normalized to uppercase)
+          pattern: '^[A-HJ-NPR-Z0-9]{17}$'
+
+    VinDecoded:
+      type: object
+      properties:
+        year:
+          type: integer
+          minimum: 1980
+          maximum: 2100
+        make:
+          type: string
+        model:
+          type: string
+
+    VinDecodeData:
+      type: object
+      required: [vin, decoded]
+      properties:
+        vin:
+          type: string
+        decoded:
+          $ref: '#/components/schemas/VinDecoded'
+
+    EnvelopeVinDecodeResponse:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/VinDecodeData'
+            error:
+              nullable: true
+
+    VinEligibilityRequest:
+      type: object
+      required: [vin]
+      properties:
+        vin:
+          type: string
+          pattern: '^[A-HJ-NPR-Z0-9]{17}$'
+
+    VinEligibilityData:
+      type: object
+      required: [vin, eligible, reasonCode]
+      properties:
+        vin:
+          type: string
+        eligible:
+          type: boolean
+        reasonCode:
+          type: string
+          description: External eligibility reason code (e.g., OK, CLASS_TOO_HIGH)
+
+    EnvelopeVinEligibilityAllowed:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/VinEligibilityData'
+            error:
+              nullable: true
+
+    VinCommitRequest:
+      type: object
+      required: [vin, acceptIrreversible]
+      properties:
+        vin:
+          type: string
+          pattern: '^[A-HJ-NPR-Z0-9]{17}$'
+        acceptIrreversible:
+          type: boolean
+          description: Must be true to commit
+
+    VinAddStatus:
+      type: string
+      enum: [NOT_USED, PENDING, COMMITTED_LOCKED, FAILED_INELIGIBLE, FAILED_DEPENDENCY, FAILED_VALIDATION, CANCELLED]
+
+    VinCommitData:
+      type: object
+      required: [requestId, status]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VinAddStatus'
+        message:
+          type: string
+          nullable: true
+        committedAt:
+          type: string
+          format: date-time
+          nullable: true
+        vin:
+          type: string
+          nullable: true
+        decoded:
+          $ref: '#/components/schemas/VinDecoded'
+
+    EnvelopeVinCommitResponse:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/VinCommitData'
+            error:
+              nullable: true
+
+    VinRequestStatusData:
+      type: object
+      required: [requestId, status, lastUpdatedAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VinAddStatus'
+        vin:
+          type: string
+          nullable: true
+        decoded:
+          $ref: '#/components/schemas/VinDecoded'
+        lastUpdatedAt:
+          type: string
+          format: date-time
+        eligibilityAllowed:
+          type: boolean
+          nullable: true
+        eligibilityReasonCode:
+          type: string
+          nullable: true
+
+    EnvelopeVinRequestStatus:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/VinRequestStatusData'
+            error:
+              nullable: true
+
+    # ---------- Admin ----------
+    AdminContractSummary:
+      type: object
+      required: [contractContextId, externalContractId, status]
+      properties:
+        contractContextId:
+          type: string
+          format: uuid
+        externalContractId:
+          type: string
+        status:
+          $ref: '#/components/schemas/VinAddStatus'
+        committedVinMasked:
+          type: string
+          nullable: true
+        committedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AdminRequestSummary:
+      type: object
+      required: [requestId, status, createdAt]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VinAddStatus'
+        createdAt:
+          type: string
+          format: date-time
+
+    AdminContractSearchData:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminContractSummary'
+
+    EnvelopeAdminContractSearch:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/AdminContractSearchData'
+            error:
+              nullable: true
+
+    AdminAuditEvent:
+      type: object
+      required: [eventType, createdAt]
+      properties:
+        eventType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        actorType:
+          type: string
+        sourceIp:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        eventData:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    AdminRequestDetailData:
+      type: object
+      required: [requestId, status, contractContextId]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        contractContextId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/VinAddStatus'
+        vin:
+          type: string
+          nullable: true
+        decoded:
+          $ref: '#/components/schemas/VinDecoded'
+        eligibilityAllowed:
+          type: boolean
+          nullable: true
+        eligibilityReasonCode:
+          type: string
+          nullable: true
+        lastDependencyError:
+          type: string
+          nullable: true
+        audit:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminAuditEvent'
+
+    EnvelopeAdminRequestDetail:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/AdminRequestDetailData'
+            error:
+              nullable: true
+
+    AdminNoteRequest:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 1
+          maxLength: 4000
+
+    AdminNoteResponseData:
+      type: object
+      required: [requestId, noteSaved]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        noteSaved:
+          type: boolean
+
+    EnvelopeAdminNoteResponse:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/AdminNoteResponseData'
+            error:
+              nullable: true

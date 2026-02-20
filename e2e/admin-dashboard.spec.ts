@@ -1,34 +1,29 @@
 import { test, expect } from '@playwright/test';
-import { authenticateConsumer } from './helpers/auth.helper';
+import { authenticateAdmin } from './helpers/admin-auth.helper';
 
 /**
  * Admin dashboard E2E tests.
  *
- * Note: The admin routes are protected by authGuard, which checks SessionService.
- * In dev mode with mock API, we need to authenticate first to get a session,
- * then navigate to /admin. These tests authenticate first to establish a session.
+ * Uses the admin dev-login flow via AdminSessionService.
+ * All admin routes are protected by adminAuthGuard.
  */
 
 test.describe('Admin Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await authenticateConsumer(page);
+    await authenticateAdmin(page);
   });
 
   test('admin page renders with layout and sidebar', async ({ page }) => {
-    await page.goto('/admin');
-
     // Admin layout should have sidebar with VIN Portal branding
     await expect(page.getByText('VIN Portal')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
 
     // Sidebar navigation links should be visible
-    await expect(page.getByRole('link', { name: /dashboard/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /search contracts/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Search Contracts', exact: true })).toBeVisible();
   });
 
   test('dashboard shows heading and quick actions', async ({ page }) => {
-    await page.goto('/admin');
-
     // Dashboard heading
     await expect(
       page.getByRole('heading', { name: /dashboard/i })
@@ -40,7 +35,7 @@ test.describe('Admin Dashboard', () => {
     ).toBeVisible();
 
     // Search contracts link in quick actions
-    await expect(page.getByRole('link', { name: /search contracts/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /search contracts/i }).first()).toBeVisible();
 
     // Support Portal info card
     await expect(
@@ -54,7 +49,6 @@ test.describe('Admin Dashboard', () => {
   });
 
   test('navigate from dashboard to contract search', async ({ page }) => {
-    await page.goto('/admin');
     await expect(
       page.getByRole('heading', { name: /dashboard/i })
     ).toBeVisible({ timeout: 5_000 });

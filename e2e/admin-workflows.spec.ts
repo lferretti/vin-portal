@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { authenticateConsumer } from './helpers/auth.helper';
+import { authenticateAdmin } from './helpers/admin-auth.helper';
 
 /**
  * Admin data-driven workflow E2E tests.
  *
- * These tests cover the search → contract detail → request detail flow.
- * A VIN add is completed first so the mock state has a request for admin pages.
+ * These tests cover the search -> contract detail -> request detail flow.
+ * A VIN add is completed first (via consumer auth) so the mock state has
+ * request data for admin pages. Then admin auth is used to access admin routes.
  */
 
 test.describe('Admin Workflows', () => {
@@ -35,16 +37,19 @@ test.describe('Admin Workflows', () => {
     await expect(
       page.getByRole('heading', { name: /vehicle added successfully/i }),
     ).toBeVisible({ timeout: 30_000 });
+
+    // Now authenticate as admin to access admin routes
+    await authenticateAdmin(page);
   });
 
-  test('search for CONTRACT-001 shows results with EXT-001', async ({ page }) => {
+  test('search by external ID shows results with EXT-001', async ({ page }) => {
     await page.goto('/admin/search');
 
     await expect(
       page.getByRole('heading', { name: /search contracts/i }),
     ).toBeVisible({ timeout: 5_000 });
 
-    await page.getByPlaceholder(/enter contract number/i).fill('CONTRACT-001');
+    await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
     await page.getByRole('button', { name: /search/i }).click();
 
     // Wait for results to load
@@ -59,7 +64,7 @@ test.describe('Admin Workflows', () => {
       page.getByRole('heading', { name: /search contracts/i }),
     ).toBeVisible({ timeout: 5_000 });
 
-    await page.getByPlaceholder(/enter contract number/i).fill('CONTRACT-001');
+    await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
     await page.getByRole('button', { name: /search/i }).click();
 
     await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 10_000 });
@@ -73,8 +78,8 @@ test.describe('Admin Workflows', () => {
   });
 
   test('navigate from contract detail to request detail', async ({ page }) => {
-    // Go directly to the known contract context ID
-    await page.goto('/admin/contract/ctx-001');
+    // Go directly to the known contract context ID from mock seed data
+    await page.goto('/admin/contract/ctx-1234567');
 
     await expect(
       page.getByRole('heading', { name: /contract detail/i }),
@@ -85,8 +90,8 @@ test.describe('Admin Workflows', () => {
       name: /view full request details/i,
     });
 
-    // The contract detail page may not have request data if loadData is a placeholder.
-    // In that case, we verify the page renders correctly.
+    // The contract detail page may not have request data if no VIN add was made
+    // against this contract. In that case, verify the page renders correctly.
     const isVisible = await viewRequestLink.isVisible().catch(() => false);
     if (isVisible) {
       await viewRequestLink.click();
@@ -95,20 +100,20 @@ test.describe('Admin Workflows', () => {
         page.getByRole('heading', { name: /request detail/i }),
       ).toBeVisible({ timeout: 5_000 });
     } else {
-      // Contract detail page rendered without request data (placeholder loadData)
-      await expect(page.getByText('ctx-001')).toBeVisible();
+      // Contract detail page rendered without request data
+      await expect(page.getByText('ctx-1234567')).toBeVisible();
     }
   });
 
   test('request detail page renders with refresh button', async ({ page }) => {
-    // Navigate to admin search and find a request
+    // Navigate to admin search and find a contract by external ID
     await page.goto('/admin/search');
 
     await expect(
       page.getByRole('heading', { name: /search contracts/i }),
     ).toBeVisible({ timeout: 5_000 });
 
-    await page.getByPlaceholder(/enter contract number/i).fill('CONTRACT-001');
+    await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
     await page.getByRole('button', { name: /search/i }).click();
 
     await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 10_000 });

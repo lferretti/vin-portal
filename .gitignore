@@ -51,6 +51,9 @@ backend/coverage/
 .claude/settings.local.json
 .playwright-mcp/
 
+# Worktrees
+.worktrees/
+
 # System files
 .DS_Store
 Thumbs.db

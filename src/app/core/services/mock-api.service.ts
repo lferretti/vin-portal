@@ -676,6 +676,40 @@ export class MockApiService {
     ];
 
     this._contracts.set(new Map(contracts.map((c) => [c.id, c])));
+
+    // Pre-seed requests for contracts that already have committed VINs
+    const requests: MockVinRequest[] = [
+      {
+        id: 'req-7654321-001',
+        contractContextId: 'ctx-7654321',
+        vin: '3N1AB7AP5KY000012',
+        decoded: {
+          year: 2023,
+          make: 'Nissan',
+          model: 'Sentra',
+        },
+        status: VinAddStatus.COMMITTED_LOCKED,
+        idempotencyKey: 'idem-7654321-001',
+        createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        lastUpdatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      },
+      {
+        id: 'req-E678901-001',
+        contractContextId: 'ctx-E678901',
+        vin: '1FTEW1EP5KFA00034',
+        decoded: {
+          year: 2022,
+          make: 'Ford',
+          model: 'F-150',
+        },
+        status: VinAddStatus.COMMITTED_LOCKED,
+        idempotencyKey: 'idem-E678901-001',
+        createdAt: new Date(Date.now() - 49 * 60 * 60 * 1000),
+        lastUpdatedAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+      },
+    ];
+
+    this._requests.set(new Map(requests.map((r) => [r.id, r])));
   }
 
   private getOrCreateContract(id: string, contractNumber: string): MockContract {

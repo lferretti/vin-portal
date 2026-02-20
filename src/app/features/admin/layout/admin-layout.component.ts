@@ -1,9 +1,11 @@
-import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { AdminSessionService } from '@core/services';
 
 /**
- * Admin portal layout with sidebar navigation
+ * Admin portal layout with responsive sidebar navigation.
+ * On desktop (lg+), sidebar is always visible.
+ * On mobile, sidebar is hidden behind a hamburger toggle.
  */
 @Component({
   selector: 'app-admin-layout',
@@ -12,10 +14,26 @@ import { AdminSessionService } from '@core/services';
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
     <div class="flex min-h-screen bg-slate-100">
+      <!-- Mobile overlay -->
+      @if (sidebarOpen()) {
+        <div
+          class="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          role="button"
+          tabindex="0"
+          aria-label="Close sidebar"
+          (click)="sidebarOpen.set(false)"
+          (keydown.enter)="sidebarOpen.set(false)"
+          (keydown.escape)="sidebarOpen.set(false)"
+        ></div>
+      }
+
       <!-- Sidebar -->
-      <aside class="w-64 flex-shrink-0 bg-slate-800 text-white">
+      <aside
+        class="sidebar w-64 flex-shrink-0 bg-slate-800 text-white"
+        [class.sidebar-open]="sidebarOpen()"
+      >
         <div class="p-6">
-          <a routerLink="/admin" class="flex items-center gap-3">
+          <a routerLink="/admin" class="flex items-center gap-3" (click)="closeSidebarOnMobile()">
             <div
               class="bg-primary-600 flex h-10 w-10 items-center justify-center rounded-lg font-bold text-white"
             >
@@ -36,6 +54,7 @@ import { AdminSessionService } from '@core/services';
                 routerLinkActive="bg-slate-700 text-white"
                 [routerLinkActiveOptions]="{ exact: true }"
                 class="flex items-center gap-3 rounded-lg px-4 py-2.5 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                (click)="closeSidebarOnMobile()"
               >
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -53,6 +72,7 @@ import { AdminSessionService } from '@core/services';
                 routerLink="/admin/search"
                 routerLinkActive="bg-slate-700 text-white"
                 class="flex items-center gap-3 rounded-lg px-4 py-2.5 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                (click)="closeSidebarOnMobile()"
               >
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -92,19 +112,32 @@ import { AdminSessionService } from '@core/services';
       </aside>
 
       <!-- Main Content -->
-      <div class="flex flex-1 flex-col">
-        <header class="border-b border-slate-200 bg-white px-8 py-4">
+      <div class="main-content flex min-w-0 flex-1 flex-col">
+        <header class="border-b border-slate-200 bg-white px-4 py-4 lg:px-8">
           <div class="flex items-center justify-between">
-            <h2 class="font-display font-semibold text-slate-900">
-              <ng-content select="[slot=header-title]"></ng-content>
-            </h2>
+            <div class="flex items-center gap-3">
+              <!-- Mobile hamburger -->
+              <button
+                type="button"
+                class="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+                aria-label="Toggle sidebar"
+                (click)="sidebarOpen.set(!sidebarOpen())"
+              >
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h2 class="font-display font-semibold text-slate-900">
+                <ng-content select="[slot=header-title]"></ng-content>
+              </h2>
+            </div>
             <div class="text-sm text-slate-500">
               Support Portal
             </div>
           </div>
         </header>
 
-        <main class="flex-1 overflow-auto p-8">
+        <main class="flex-1 overflow-auto p-4 lg:p-8">
           <router-outlet />
         </main>
       </div>
@@ -112,14 +145,32 @@ import { AdminSessionService } from '@core/services';
   `,
   styles: [
     `
-      aside {
+      aside.sidebar {
         position: fixed;
         left: 0;
         top: 0;
         bottom: 0;
+        z-index: 40;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease-in-out;
       }
-      .flex-1 {
-        margin-left: 16rem;
+
+      aside.sidebar-open {
+        transform: translateX(0);
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      @media (min-width: 1024px) {
+        aside.sidebar {
+          transform: translateX(0);
+        }
+
+        .main-content {
+          margin-left: 16rem;
+        }
       }
     `,
   ],
@@ -128,9 +179,14 @@ export class AdminLayoutComponent {
   private readonly adminSession = inject(AdminSessionService);
   private readonly router = inject(Router);
 
+  readonly sidebarOpen = signal(false);
   readonly displayName = this.adminSession.displayName;
   readonly role = this.adminSession.role;
   readonly email = this.adminSession.email;
+
+  closeSidebarOnMobile(): void {
+    this.sidebarOpen.set(false);
+  }
 
   logout(): void {
     this.adminSession.clearSession();

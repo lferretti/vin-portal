@@ -81,7 +81,7 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
 
       <!-- Results -->
       @if (hasSearched()) {
-        <div class="card">
+        <div class="card relative z-10">
           <h2 class="mb-4 text-lg font-semibold text-slate-900">
             Results ({{ results().length }})
           </h2>

@@ -19,3 +19,17 @@ export async function authenticateAdmin(
   await expect(page).toHaveURL(/\/admin$/, { timeout: 10_000 });
   await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
 }
+
+/**
+ * Open the admin sidebar on mobile viewports.
+ * On desktop the sidebar is always visible, so the toggle button is hidden.
+ * This safely no-ops when the toggle is not present.
+ */
+export async function openAdminSidebar(page: Page): Promise<void> {
+  const toggle = page.getByRole('button', { name: /toggle sidebar/i });
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+    // Wait for sidebar animation to complete
+    await expect(page.getByRole('navigation', { name: /admin navigation/i })).toBeVisible();
+  }
+}

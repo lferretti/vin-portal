@@ -69,7 +69,9 @@ test.describe('Admin Workflows', () => {
 
     await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 10_000 });
 
-    await page.getByRole('link', { name: /view details/i }).first().click();
+    const viewDetailsLink = page.getByRole('link', { name: /view details/i }).first();
+    await viewDetailsLink.scrollIntoViewIfNeeded();
+    await viewDetailsLink.click();
 
     await expect(page).toHaveURL(/\/admin\/contract\//);
     await expect(
@@ -119,7 +121,9 @@ test.describe('Admin Workflows', () => {
     await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 10_000 });
 
     // View contract detail
-    await page.getByRole('link', { name: /view details/i }).first().click();
+    const viewLink = page.getByRole('link', { name: /view details/i }).first();
+    await viewLink.scrollIntoViewIfNeeded();
+    await viewLink.click();
     await expect(page).toHaveURL(/\/admin\/contract\//);
 
     // Check if request detail link exists

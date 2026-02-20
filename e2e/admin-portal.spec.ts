@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { authenticateAdmin } from './helpers/admin-auth.helper';
+import { authenticateAdmin, openAdminSidebar } from './helpers/admin-auth.helper';
 
 test.describe('Admin Portal @smoke', () => {
   test.describe('Authentication', () => {
@@ -17,16 +17,19 @@ test.describe('Admin Portal @smoke', () => {
 
     test('should authenticate as admin and show dashboard', async ({ page }) => {
       await authenticateAdmin(page, 'admin');
+      await openAdminSidebar(page);
       await expect(page.getByText('Dev Admin')).toBeVisible();
     });
 
     test('should authenticate as support and show dashboard', async ({ page }) => {
       await authenticateAdmin(page, 'support');
+      await openAdminSidebar(page);
       await expect(page.getByText('Dev Support')).toBeVisible();
     });
 
     test('should logout and redirect to login', async ({ page }) => {
       await authenticateAdmin(page);
+      await openAdminSidebar(page);
       await page.getByRole('button', { name: /sign out/i }).click();
       await expect(page).toHaveURL(/\/admin\/login/);
     });
@@ -40,7 +43,9 @@ test.describe('Admin Portal @smoke', () => {
     test('should search by external contract ID and show results', async ({ page }) => {
       await page.goto('/admin/search');
       await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
-      await page.getByRole('button', { name: /search/i }).click();
+      const searchBtn = page.getByRole('button', { name: /search/i });
+      await searchBtn.scrollIntoViewIfNeeded();
+      await searchBtn.click();
       await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 5_000 });
     });
 
@@ -49,7 +54,9 @@ test.describe('Admin Portal @smoke', () => {
       await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
       await page.getByRole('button', { name: /search/i }).click();
       await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 5_000 });
-      await page.getByRole('link', { name: /view details/i }).first().click();
+      const viewLink = page.getByRole('link', { name: /view details/i }).first();
+      await viewLink.scrollIntoViewIfNeeded();
+      await viewLink.click();
       await expect(page).toHaveURL(/\/admin\/contract\//);
     });
   });
@@ -64,7 +71,9 @@ test.describe('Admin Portal @smoke', () => {
       await page.getByPlaceholder(/enter external id/i).fill('EXT-001');
       await page.getByRole('button', { name: /search/i }).click();
       await expect(page.getByText('EXT-001')).toBeVisible({ timeout: 5_000 });
-      await page.getByRole('link', { name: /view details/i }).first().click();
+      const viewLink = page.getByRole('link', { name: /view details/i }).first();
+      await viewLink.scrollIntoViewIfNeeded();
+      await viewLink.click();
       await expect(page.getByText(/contract context id/i)).toBeVisible({ timeout: 5_000 });
     });
   });

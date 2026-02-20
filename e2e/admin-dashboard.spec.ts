@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { authenticateAdmin } from './helpers/admin-auth.helper';
+import { authenticateAdmin, openAdminSidebar } from './helpers/admin-auth.helper';
 
 /**
  * Admin dashboard E2E tests.
@@ -14,6 +14,9 @@ test.describe('Admin Dashboard', () => {
   });
 
   test('admin page renders with layout and sidebar', async ({ page }) => {
+    // Open sidebar on mobile (no-op on desktop)
+    await openAdminSidebar(page);
+
     // Admin layout should have sidebar with VIN Portal branding
     await expect(page.getByText('VIN Portal')).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText('Admin Dashboard')).toBeVisible();
@@ -53,7 +56,8 @@ test.describe('Admin Dashboard', () => {
       page.getByRole('heading', { name: /dashboard/i })
     ).toBeVisible({ timeout: 5_000 });
 
-    // Click "Search Contracts" in the sidebar
+    // Open sidebar on mobile (no-op on desktop), then click sidebar link
+    await openAdminSidebar(page);
     await page.getByRole('link', { name: /search contracts/i }).first().click();
 
     await expect(page).toHaveURL(/\/admin\/search/);

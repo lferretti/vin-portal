@@ -81,6 +81,52 @@ export class AdminService {
     };
   }
 
+  async getContractDetail(
+    contractContextId: string,
+    correlationId: string,
+    sourceIp: string,
+    userAgent: string,
+  ) {
+    const contract = await this.contractRepo.findOne({
+      where: { id: contractContextId },
+    });
+
+    if (!contract) {
+      throw new HttpException(
+        { code: ErrorCodes.CONTRACT_NOT_FOUND, message: 'Contract not found.' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const requests = await this.requestRepo.find({
+      where: { contractContextId },
+      order: { createdAt: 'DESC' },
+    });
+
+    await this.auditService.emit({
+      eventType: EventTypes.ADMIN_VIEW,
+      actorType: ActorType.ADMIN,
+      contractContextId,
+      correlationId,
+      sourceIp,
+      userAgent,
+      eventData: { action: 'contract_detail' },
+    });
+
+    return {
+      contractContextId: contract.id,
+      externalContractId: contract.externalContractId,
+      status: contract.status,
+      committedVinMasked: contract.committedVinMasked,
+      committedAt: contract.committedAt?.toISOString() ?? null,
+      requests: requests.map((r) => ({
+        requestId: r.id,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    };
+  }
+
   async getRequestDetail(
     requestId: string,
     correlationId: string,

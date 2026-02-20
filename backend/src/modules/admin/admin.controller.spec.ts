@@ -13,6 +13,14 @@ describe('AdminController', () => {
   beforeEach(async () => {
     adminService = {
       searchContracts: jest.fn().mockResolvedValue({ results: [] }),
+      getContractDetail: jest.fn().mockResolvedValue({
+        contractContextId: 'ctx-1',
+        externalContractId: 'EXT-001',
+        status: 'NOT_USED',
+        committedVinMasked: null,
+        committedAt: null,
+        requests: [],
+      }),
       getRequestDetail: jest.fn().mockResolvedValue({
         requestId: 'req-1',
         status: 'PENDING',
@@ -58,6 +66,26 @@ describe('AdminController', () => {
     it('should pass correlation ID to service', async () => {
       await controller.searchContracts({} as any, 'admin-corr', ip, userAgent);
       expect(adminService.searchContracts).toHaveBeenCalledWith({}, 'admin-corr', ip, userAgent);
+    });
+  });
+
+  describe('getContractDetail', () => {
+    it('should call adminService.getContractDetail with correct arguments', async () => {
+      await controller.getContractDetail('ctx-1', correlationId, ip, userAgent);
+      expect(adminService.getContractDetail).toHaveBeenCalledWith('ctx-1', correlationId, ip, userAgent);
+    });
+
+    it('should return the service response', async () => {
+      const result = await controller.getContractDetail('ctx-1', correlationId, ip, userAgent);
+      expect(result.contractContextId).toBe('ctx-1');
+      expect(result.requests).toEqual([]);
+    });
+
+    it('should propagate service errors', async () => {
+      adminService.getContractDetail.mockRejectedValue(new Error('Contract not found'));
+      await expect(
+        controller.getContractDetail('ctx-missing', correlationId, ip, userAgent),
+      ).rejects.toThrow('Contract not found');
     });
   });
 

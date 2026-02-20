@@ -31,6 +31,16 @@ export class AdminController {
     return this.adminService.searchContracts(query, correlationId, ip, userAgent);
   }
 
+  @Get('contracts/:contractContextId')
+  getContractDetail(
+    @Param('contractContextId', ParseUUIDPipe) contractContextId: string,
+    @CorrelationId() correlationId: string,
+    @Ip() ip: string,
+    @Headers('user-agent') userAgent: string,
+  ) {
+    return this.adminService.getContractDetail(contractContextId, correlationId, ip, userAgent);
+  }
+
   @Get('requests/:requestId')
   getRequestDetail(
     @Param('requestId', ParseUUIDPipe) requestId: string,

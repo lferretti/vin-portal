@@ -1,5 +1,6 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { AdminSessionService } from '@core/services';
 
 /**
  * Admin portal layout with sidebar navigation
@@ -27,7 +28,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           </a>
         </div>
 
-        <nav class="px-4 py-2">
+        <nav aria-label="Admin navigation" class="px-4 py-2">
           <ul class="space-y-1">
             <li>
               <a
@@ -67,19 +68,24 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           </ul>
         </nav>
 
-        <div class="absolute bottom-0 left-0 w-64 border-t border-slate-700 p-4">
-          <a
-            href="/"
-            class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
+        <div class="px-4 py-4 border-t border-slate-700">
+          @if (displayName()) {
+            <div class="mb-3">
+              <div class="text-sm font-medium text-slate-200">{{ displayName() }}</div>
+              <div class="text-xs text-slate-400">{{ email() }}</div>
+              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                [class]="role() === 'admin' ? 'bg-purple-900 text-purple-200' : 'bg-blue-900 text-blue-200'">
+                {{ role() === 'admin' ? 'Security / Admin' : 'Support' }}
+              </span>
+            </div>
+          }
+          <button
+            (click)="logout()"
+            class="w-full text-left text-sm text-slate-400 hover:text-white transition-colors"
           >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M11 17l-5-5m0 0l5-5m-5 5h12"
-              />
-            </svg>
+            Sign Out
+          </button>
+          <a routerLink="/" class="block mt-2 text-sm text-slate-400 hover:text-white transition-colors">
             Back to Consumer Portal
           </a>
         </div>
@@ -118,5 +124,17 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
     `,
   ],
 })
-export class AdminLayoutComponent {}
+export class AdminLayoutComponent {
+  private readonly adminSession = inject(AdminSessionService);
+  private readonly router = inject(Router);
+
+  readonly displayName = this.adminSession.displayName;
+  readonly role = this.adminSession.role;
+  readonly email = this.adminSession.email;
+
+  logout(): void {
+    this.adminSession.clearSession();
+    this.router.navigate(['/admin/login']);
+  }
+}
 

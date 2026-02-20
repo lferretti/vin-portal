@@ -4,6 +4,7 @@ import { ContractContext } from '../../database/entities/contract-context.entity
 import { VinAddRequest } from '../../database/entities/vin-add-request.entity';
 import { AuditEvent } from '../../database/entities/audit-event.entity';
 import { AdminController } from './admin.controller';
+import { AdminAuthController } from './admin-auth.controller';
 import { AdminService } from './admin.service';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
@@ -14,7 +15,7 @@ import { AuditModule } from '../audit/audit.module';
     AuthModule,
     AuditModule,
   ],
-  controllers: [AdminController],
+  controllers: [AdminController, AdminAuthController],
   providers: [AdminService],
 })
 export class AdminModule {}

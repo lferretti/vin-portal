@@ -16,7 +16,7 @@ export interface AdminSessionPayload {
   role: string;
 }
 
-const VALID_ADMIN_ROLES = ['admin', 'supervisor', 'readonly'] as const;
+const VALID_ADMIN_ROLES = ['admin', 'supervisor', 'readonly', 'support'] as const;
 
 @Injectable()
 export class AdminJwtStrategy extends PassportStrategy(Strategy, 'admin-jwt') {

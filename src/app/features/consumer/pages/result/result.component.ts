@@ -319,10 +319,10 @@ export class ResultComponent implements OnInit {
   requestId = input.required<string>();
 
   readonly steps: StepConfig[] = [
-    { id: 'auth', label: 'Authenticate' },
-    { id: 'vin', label: 'VIN Entry' },
+    { id: 'auth', label: 'Verify Contract Details' },
+    { id: 'vin', label: 'Second VIN Entry' },
     { id: 'review', label: 'Review' },
-    { id: 'result', label: 'Result' },
+    { id: 'result', label: 'Summary' },
   ];
 
   readonly status = signal<VinAddStatus | null>(null);

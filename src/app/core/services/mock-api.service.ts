@@ -71,6 +71,11 @@ export class MockApiService {
           '7654321': { lastName: 'JONES', zip: '10001' },
           '0TP7654': { lastName: 'TESTUSER', zip: '12345' },
           'LOCKED1': { lastName: 'LOCKED', zip: '99999' },
+          'A234567': { lastName: 'GARCIA', zip: '90210' },
+          'B345678': { lastName: 'WILLIAMS', zip: '60601' },
+          'C456789': { lastName: 'JOHNSON', zip: '33101' },
+          'D567890': { lastName: 'MARTINEZ', zip: '75201' },
+          'E678901': { lastName: 'TAYLOR', zip: '98101' },
         };
 
         const normalized = vin7.toUpperCase();
@@ -90,7 +95,7 @@ export class MockApiService {
         }
 
         // Check if contract requires OTP
-        if (normalized === '0TP7654') {
+        if (normalized === '0TP7654' || normalized === 'C456789') {
           const challengeId = this.generateId('otp');
           this._otpChallenges.update((m) => {
             m.set(challengeId, {
@@ -116,7 +121,7 @@ export class MockApiService {
         }
 
         // Check if contract is locked
-        if (normalized === 'LOCKED1') {
+        if (normalized === 'LOCKED1' || normalized === 'E678901') {
           return this.errorResponse<AuthenticateSuccessData>(
             ApiErrorCodes.CONTRACT_LOCKED,
             'This contract already has an additional vehicle registered.'
@@ -637,6 +642,36 @@ export class MockApiService {
         hasAdditionalVin: true,
         additionalVinMasked: '3N1******9012',
         additionalVinCommittedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'ctx-A234567',
+        contractNumber: 'A234567',
+        externalContractId: 'EXT-003',
+        primaryVinMasked: 'WVW******2345',
+        hasAdditionalVin: false,
+      },
+      {
+        id: 'ctx-B345678',
+        contractNumber: 'B345678',
+        externalContractId: 'EXT-004',
+        primaryVinMasked: '3N1******6789',
+        hasAdditionalVin: false,
+      },
+      {
+        id: 'ctx-D567890',
+        contractNumber: 'D567890',
+        externalContractId: 'EXT-006',
+        primaryVinMasked: 'JTD******7890',
+        hasAdditionalVin: false,
+      },
+      {
+        id: 'ctx-E678901',
+        contractNumber: 'E678901',
+        externalContractId: 'EXT-007',
+        primaryVinMasked: '2HG******4567',
+        hasAdditionalVin: true,
+        additionalVinMasked: '1FT******8901',
+        additionalVinCommittedAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
       },
     ];
 

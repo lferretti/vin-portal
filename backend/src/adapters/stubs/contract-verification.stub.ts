@@ -49,6 +49,41 @@ export class ContractVerificationStub implements ContractVerificationAdapter {
       hasAdditionalVin: true,
       primaryVinMasked: '1ZZ******0000',
     },
+    'A234567': {
+      lastName: 'GARCIA',
+      zip: '90210',
+      requiresOtp: false,
+      hasAdditionalVin: false,
+      primaryVinMasked: 'WVW******2345',
+    },
+    'B345678': {
+      lastName: 'WILLIAMS',
+      zip: '60601',
+      requiresOtp: false,
+      hasAdditionalVin: false,
+      primaryVinMasked: '3N1******6789',
+    },
+    'C456789': {
+      lastName: 'JOHNSON',
+      zip: '33101',
+      requiresOtp: true,
+      hasAdditionalVin: false,
+      primaryVinMasked: '1G1******3456',
+    },
+    'D567890': {
+      lastName: 'MARTINEZ',
+      zip: '75201',
+      requiresOtp: false,
+      hasAdditionalVin: false,
+      primaryVinMasked: 'JTD******7890',
+    },
+    'E678901': {
+      lastName: 'TAYLOR',
+      zip: '98101',
+      requiresOtp: false,
+      hasAdditionalVin: true,
+      primaryVinMasked: '2HG******4567',
+    },
   };
 
   async verify(

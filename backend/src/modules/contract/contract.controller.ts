@@ -9,7 +9,7 @@ export class ContractController {
   constructor(private readonly contractService: ContractService) {}
 
   @Post('authenticate')
-  @Throttle({ default: { ttl: 600000, limit: 5 } })
+  @Throttle({ default: { ttl: 60000, limit: 100 } })
   authenticate(
     @Body() dto: AuthenticateContractDto,
     @CorrelationId() correlationId: string,

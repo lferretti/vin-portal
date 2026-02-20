@@ -97,3 +97,46 @@ export interface AdminNoteResponseData {
   noteSaved: boolean;
 }
 
+// Admin Auth Models
+
+/**
+ * Admin login request
+ */
+export interface AdminLoginRequest {
+  role: 'admin' | 'support';
+}
+
+/**
+ * Admin login response data
+ */
+export interface AdminLoginResponseData {
+  /** JWT token */
+  token: string;
+  /** Token expiration timestamp (ISO 8601) */
+  expiresAt: string;
+  /** Admin email address */
+  email: string;
+  /** Admin role */
+  role: string;
+  /** Display name for UI */
+  displayName: string;
+}
+
+/**
+ * Admin contract detail (includes request list)
+ */
+export interface AdminContractDetailData {
+  /** Internal contract context ID */
+  contractContextId: string;
+  /** External contract ID from verification system */
+  externalContractId: string | null;
+  /** Current status */
+  status: VinAddStatus;
+  /** Committed VIN (masked) */
+  committedVinMasked: string | null;
+  /** Commit timestamp */
+  committedAt: string | null;
+  /** List of requests for this contract */
+  requests: AdminRequestSummary[];
+}
+

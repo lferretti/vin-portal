@@ -19,7 +19,7 @@ export class ContractService {
     request: AuthenticateContractRequest
   ): Observable<ApiEnvelope<AuthenticateSuccessData>> {
     return this.api.post<AuthenticateSuccessData>('/contract/authenticate', {
-      contractNumber: request.contractNumber.trim(),
+      vin7: request.vin7.trim(),
       lastName: request.lastName.trim().toUpperCase(),
       zip: request.zip.trim(),
     });

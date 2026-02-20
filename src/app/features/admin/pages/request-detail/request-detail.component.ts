@@ -1,16 +1,16 @@
-import { Component, inject, signal, OnInit, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, OnInit, input } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe, JsonPipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
-
 import { AdminService } from '@core/services/admin.service';
-import { AdminRequestDetailData, AdminAuditEvent, VinAddStatus } from '@core/models';
+import { AdminRequestDetailData } from '@core/models';
 import {
   AlertBannerComponent,
   LoadingSpinnerComponent,
   VinDisplayComponent,
 } from '@shared/components';
+import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.util';
 
 /**
  * Admin request detail page with audit timeline and notes
@@ -18,6 +18,7 @@ import {
 @Component({
   selector: 'app-request-detail',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     ReactiveFormsModule,
@@ -29,19 +30,19 @@ import {
   ],
   template: `
     <div>
-      <div class="flex items-center gap-4 mb-6">
+      <div class="mb-6 flex items-center gap-4">
         <a
           routerLink="/admin/search"
           class="inline-flex items-center text-sm text-slate-500 hover:text-slate-700"
         >
-          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
           Back to Search
         </a>
       </div>
 
-      <h1 class="text-2xl font-bold text-slate-900 mb-6">Request Detail</h1>
+      <h1 class="mb-6 text-2xl font-bold text-slate-900">Request Detail</h1>
 
       @if (errorMessage()) {
         <app-alert-banner type="error" class="mb-6" [dismissible]="true" (dismiss)="clearError()">
@@ -60,13 +61,13 @@ import {
           <app-loading-spinner message="Loading request details..." />
         </div>
       } @else if (data()) {
-        <div class="grid lg:grid-cols-3 gap-6">
+        <div class="grid gap-6 lg:grid-cols-3">
           <!-- Main Content -->
-          <div class="lg:col-span-2 space-y-6">
+          <div class="space-y-6 lg:col-span-2">
             <!-- Request Info -->
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">Request Information</h2>
-              <dl class="grid md:grid-cols-2 gap-4">
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">Request Information</h2>
+              <dl class="grid gap-4 md:grid-cols-2">
                 <div>
                   <dt class="text-sm text-slate-500">Request ID</dt>
                   <dd class="font-mono text-slate-900">{{ data()!.requestId }}</dd>
@@ -90,8 +91,8 @@ import {
               </dl>
 
               @if (data()!.decoded) {
-                <div class="mt-4 pt-4 border-t border-slate-200">
-                  <h3 class="text-sm font-medium text-slate-700 mb-2">Vehicle Information</h3>
+                <div class="mt-4 border-t border-slate-200 pt-4">
+                  <h3 class="mb-2 text-sm font-medium text-slate-700">Vehicle Information</h3>
                   <app-vin-display [decoded]="data()!.decoded!" />
                 </div>
               }
@@ -99,8 +100,8 @@ import {
 
             <!-- Eligibility -->
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">Eligibility</h2>
-              <dl class="grid md:grid-cols-2 gap-4">
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">Eligibility</h2>
+              <dl class="grid gap-4 md:grid-cols-2">
                 <div>
                   <dt class="text-sm text-slate-500">Result</dt>
                   <dd>
@@ -120,7 +121,7 @@ import {
                 @if (data()!.lastDependencyError) {
                   <div class="md:col-span-2">
                     <dt class="text-sm text-slate-500">Last Dependency Error</dt>
-                    <dd class="text-red-700 text-sm">{{ data()!.lastDependencyError }}</dd>
+                    <dd class="text-sm text-red-700">{{ data()!.lastDependencyError }}</dd>
                   </div>
                 }
               </dl>
@@ -128,23 +129,23 @@ import {
 
             <!-- Audit Timeline -->
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">Audit Timeline</h2>
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">Audit Timeline</h2>
               @if (data()!.audit.length === 0) {
-                <p class="text-slate-500 text-sm">No audit events recorded.</p>
+                <p class="text-sm text-slate-500">No audit events recorded.</p>
               } @else {
                 <div class="space-y-4">
                   @for (event of data()!.audit; track event.createdAt) {
                     <div
-                      class="relative pl-6 pb-4 border-l-2 border-slate-200 last:border-l-0 last:pb-0"
+                      class="relative border-l-2 border-slate-200 pb-4 pl-6 last:border-l-0 last:pb-0"
                     >
                       <div
-                        class="absolute left-0 top-0 w-3 h-3 -translate-x-[7px] rounded-full bg-slate-300"
+                        class="absolute top-0 left-0 h-3 w-3 -translate-x-[7px] rounded-full bg-slate-300"
                       ></div>
                       <div class="flex items-start justify-between">
                         <div>
                           <span class="font-medium text-slate-900">{{ event.eventType }}</span>
                           @if (event.actorType) {
-                            <span class="text-xs text-slate-500 ml-2">({{ event.actorType }})</span>
+                            <span class="ml-2 text-xs text-slate-500">({{ event.actorType }})</span>
                           }
                         </div>
                         <time class="text-xs text-slate-500">
@@ -153,7 +154,7 @@ import {
                       </div>
                       @if (event.eventData) {
                         <pre
-                          class="mt-1 text-xs text-slate-600 bg-slate-50 p-2 rounded overflow-x-auto"
+                          class="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600"
                         >{{ event.eventData | json }}</pre>
                       }
                     </div>
@@ -167,7 +168,7 @@ import {
           <div class="space-y-6">
             <!-- Add Note -->
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">Add Internal Note</h2>
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">Add Internal Note</h2>
               <form (ngSubmit)="onAddNote()" class="space-y-3">
                 <textarea
                   [formControl]="noteControl"
@@ -182,11 +183,11 @@ import {
                   </span>
                   <button
                     type="submit"
-                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                    class="bg-primary-600 hover:bg-primary-700 inline-flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-white transition-colors disabled:opacity-50"
                     [disabled]="noteControl.invalid || isAddingNote()"
                   >
                     @if (isAddingNote()) {
-                      <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                     }
                     Add Note
                   </button>
@@ -196,14 +197,14 @@ import {
 
             <!-- Quick Actions -->
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">Actions</h2>
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">Actions</h2>
               <div class="space-y-2">
                 <button
                   type="button"
                   (click)="refresh()"
-                  class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-white text-slate-700 font-medium rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-50"
                 >
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Refresh Data
@@ -218,6 +219,7 @@ import {
 })
 export class RequestDetailComponent implements OnInit {
   private readonly adminService = inject(AdminService);
+  private readonly destroyRef = inject(DestroyRef);
 
   requestId = input.required<string>();
 
@@ -248,7 +250,7 @@ export class RequestDetailComponent implements OnInit {
     this.errorMessage.set(null);
     this.successMessage.set(null);
 
-    this.adminService.addNote(this.requestId(), this.noteControl.value!).subscribe({
+    this.adminService.addNote(this.requestId(), this.noteControl.value!).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.isAddingNote.set(false);
         if (response.success) {
@@ -257,7 +259,7 @@ export class RequestDetailComponent implements OnInit {
           this.loadData(); // Refresh to show new note in audit
         }
       },
-      error: (err: HttpErrorResponse) => {
+      error: () => {
         this.isAddingNote.set(false);
         this.errorMessage.set('Failed to add note. Please try again.');
       },
@@ -268,42 +270,21 @@ export class RequestDetailComponent implements OnInit {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
-    this.adminService.getRequestDetail(this.requestId()).subscribe({
+    this.adminService.getRequestDetail(this.requestId()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.isLoading.set(false);
         if (response.success && response.data) {
           this.data.set(response.data);
         }
       },
-      error: (err: HttpErrorResponse) => {
+      error: () => {
         this.isLoading.set(false);
         this.errorMessage.set('Failed to load request details.');
       },
     });
   }
 
-  formatStatus(status: VinAddStatus): string {
-    const labels: Record<VinAddStatus, string> = {
-      [VinAddStatus.NOT_USED]: 'Not Used',
-      [VinAddStatus.PENDING]: 'Pending',
-      [VinAddStatus.COMMITTED_LOCKED]: 'Committed',
-      [VinAddStatus.FAILED_INELIGIBLE]: 'Failed - Ineligible',
-      [VinAddStatus.FAILED_DEPENDENCY]: 'Failed - Dependency',
-      [VinAddStatus.FAILED_VALIDATION]: 'Failed - Validation',
-      [VinAddStatus.CANCELLED]: 'Cancelled',
-    };
-    return labels[status] || status;
-  }
-
-  getStatusBadgeClass(status: VinAddStatus): string {
-    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
-    const variants: Record<string, string> = {
-      [VinAddStatus.COMMITTED_LOCKED]: `${base} bg-green-100 text-green-800`,
-      [VinAddStatus.PENDING]: `${base} bg-yellow-100 text-yellow-800`,
-      [VinAddStatus.NOT_USED]: `${base} bg-slate-100 text-slate-800`,
-      default: `${base} bg-red-100 text-red-800`,
-    };
-    return variants[status] || variants['default'];
-  }
+  readonly formatStatus = formatStatus;
+  readonly getStatusBadgeClass = getStatusBadgeClass;
 }
 

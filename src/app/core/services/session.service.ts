@@ -1,6 +1,5 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { AuthenticateSuccessData, ContractSummary, SessionClaims } from '@core/models';
-import { environment } from '@env';
 
 const SESSION_STORAGE_KEY = 'vin_portal_session';
 const REDIRECT_URL_KEY = 'vin_portal_redirect_url';
@@ -117,7 +116,9 @@ export class SessionService {
    * Set URL to redirect to after authentication
    */
   setRedirectUrl(url: string): void {
-    sessionStorage.setItem(REDIRECT_URL_KEY, url);
+    if (this.isRelativePath(url)) {
+      sessionStorage.setItem(REDIRECT_URL_KEY, url);
+    }
   }
 
   /**
@@ -126,7 +127,14 @@ export class SessionService {
   consumeRedirectUrl(): string | null {
     const url = sessionStorage.getItem(REDIRECT_URL_KEY);
     sessionStorage.removeItem(REDIRECT_URL_KEY);
+    if (url && !this.isRelativePath(url)) {
+      return null;
+    }
     return url;
+  }
+
+  private isRelativePath(url: string): boolean {
+    return url.startsWith('/') && !url.startsWith('//');
   }
 
   /**

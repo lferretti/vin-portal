@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 /**
@@ -7,15 +7,16 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 @Component({
   selector: 'app-admin-layout',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   template: `
-    <div class="min-h-screen bg-slate-100 flex">
+    <div class="flex min-h-screen bg-slate-100">
       <!-- Sidebar -->
-      <aside class="w-64 bg-slate-800 text-white flex-shrink-0">
+      <aside class="w-64 flex-shrink-0 bg-slate-800 text-white">
         <div class="p-6">
           <a routerLink="/admin" class="flex items-center gap-3">
             <div
-              class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold"
+              class="bg-primary-600 flex h-10 w-10 items-center justify-center rounded-lg font-bold text-white"
             >
               VP
             </div>
@@ -33,9 +34,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
                 routerLink="/admin"
                 routerLinkActive="bg-slate-700 text-white"
                 [routerLinkActiveOptions]="{ exact: true }"
-                class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                class="flex items-center gap-3 rounded-lg px-4 py-2.5 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
               >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -50,9 +51,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
               <a
                 routerLink="/admin/search"
                 routerLinkActive="bg-slate-700 text-white"
-                class="flex items-center gap-3 px-4 py-2.5 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                class="flex items-center gap-3 rounded-lg px-4 py-2.5 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
               >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -66,12 +67,12 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           </ul>
         </nav>
 
-        <div class="absolute bottom-0 left-0 w-64 p-4 border-t border-slate-700">
+        <div class="absolute bottom-0 left-0 w-64 border-t border-slate-700 p-4">
           <a
             href="/"
-            class="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+            class="flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -85,8 +86,8 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
       </aside>
 
       <!-- Main Content -->
-      <div class="flex-1 flex flex-col">
-        <header class="bg-white border-b border-slate-200 px-8 py-4">
+      <div class="flex flex-1 flex-col">
+        <header class="border-b border-slate-200 bg-white px-8 py-4">
           <div class="flex items-center justify-between">
             <h2 class="font-display font-semibold text-slate-900">
               <ng-content select="[slot=header-title]"></ng-content>
@@ -97,7 +98,7 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
           </div>
         </header>
 
-        <main class="flex-1 p-8 overflow-auto">
+        <main class="flex-1 overflow-auto p-8">
           <router-outlet />
         </main>
       </div>

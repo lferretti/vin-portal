@@ -6,10 +6,34 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
+    "lint": "ng lint",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "test:ci": "jest --ci --coverage --reporters=default"
+    "test:ci": "jest --ci --coverage --reporters=default",
+    "e2e": "playwright test",
+    "e2e:smoke": "playwright test --grep @smoke",
+    "e2e:headed": "playwright test --headed",
+    "start:backend": "ng serve --configuration backend --proxy-config proxy.conf.json",
+    "format": "prettier --write \"src/**/*.ts\" \"backend/src/**/*.ts\" \"e2e/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"backend/src/**/*.ts\" \"e2e/**/*.ts\"",
+    "lighthouse": "lhci autorun",
+    "load-test": "k6 run load-tests/scenarios/auth-flow.js",
+    "load-test:vin": "k6 run load-tests/scenarios/vin-flow.js",
+    "load-test:admin": "k6 run load-tests/scenarios/admin-search.js",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "prettier --write",
+      "eslint --fix",
+      "tsc-files --noEmit"
+    ],
+    "backend/src/**/*.ts": [
+      "prettier --write",
+      "eslint --fix --config backend/.eslintrc.js"
+    ]
   },
   "private": true,
   "dependencies": {
@@ -20,6 +44,7 @@
     "@angular/platform-browser": "^21.0.0",
     "@angular/platform-browser-dynamic": "^21.0.0",
     "@angular/router": "^21.0.0",
+    "@datadog/browser-rum": "^6.27.1",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.18",
     "postcss": "^8.5.6",
@@ -33,9 +58,20 @@
     "@angular-devkit/build-angular": "^21.0.0",
     "@angular/cli": "^21.0.0",
     "@angular/compiler-cli": "^21.0.0",
+    "@axe-core/playwright": "^4.0.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@datadog/datadog-ci": "^2.0.0",
+    "@eslint/js": "^9.39.2",
+    "@lhci/cli": "^0.14.0",
+    "@playwright/test": "^1.58.2",
     "@types/jest": "^30.0.0",
+    "angular-eslint": "^21.2.0",
+    "eslint": "^9.39.2",
+    "eslint-plugin-tailwindcss": "^4.0.0-beta.0",
     "jest": "^30.0.0",
     "jest-preset-angular": "^16.0.0",
-    "typescript": "~5.9.0"
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.56.0"
   }
 }

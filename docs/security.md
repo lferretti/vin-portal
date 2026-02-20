@@ -37,9 +37,11 @@ OTP best practices:
 - lockout with cooldown window
 - store only hashed OTP (salted); never plaintext
 
-### Optional CAPTCHA (feature-flag)
-- Default: conditional (only when suspicious triggers fire)
-- Escalate: always require CAPTCHA on authenticate if abuse increases
+### CAPTCHA — Deferred (Accepted Risk)
+- **Status:** `captchaEnabled: false` in all environments
+- **Mitigation:** Rate limiting (IP + contract hash) and WAF rules provide sufficient bot protection for launch
+- **Escalation plan:** If abuse metrics exceed thresholds (e.g., >100 failed auth attempts/hour from unique IPs), enable CAPTCHA by setting `captchaEnabled: true` in `environment.prod.ts` and deploying a CAPTCHA provider integration
+- **Review cadence:** Re-evaluate monthly based on Datadog abuse dashboards
 
 ### Session token security
 - Short TTL (e.g., 15 minutes)
@@ -53,6 +55,20 @@ OTP best practices:
 ### Idempotency + locking
 - Require `X-Idempotency-Key` on `/vin/commit`
 - DB uniqueness and transactional guards enforce one commit ever
+
+## CSRF Protection
+
+The VIN Portal does **not** implement traditional CSRF tokens (e.g., double-submit cookie pattern). This is an intentional decision, not an oversight.
+
+**Rationale:** All authenticated API requests use a `Bearer` token in the `Authorization` header. Browsers do not automatically attach custom headers to cross-origin requests, so CSRF attacks cannot forge valid requests. This is a well-established mitigation recognized by OWASP.
+
+**Key properties that make CSRF non-exploitable:**
+1. Session tokens are stored in JavaScript memory (Angular service), not cookies
+2. The `Authorization: Bearer <token>` header must be explicitly set by application code
+3. Browsers enforce same-origin policy on custom headers — cross-origin `<form>` or `<img>` submissions cannot set `Authorization`
+4. CORS policy restricts which origins can make API requests with credentials
+
+**See also:** [ADR-0002: CSRF Not Needed with Bearer Tokens](adr/0002-csrf-not-needed-bearer-tokens.md)
 
 ## Logging & audit policy
 ### Allowed (structured logs)

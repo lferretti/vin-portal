@@ -1,0 +1,667 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [DEV, QA, UAT, PROD]
+  push:
+    branches: [DEV, QA, UAT, PROD]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:ci
+
+      - name: Build
+        run: npm run build
+
+      - name: npm audit — production deps (blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit — all deps (advisory)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+
+  backend-quality-gates:
+    name: Backend Quality Gates
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vin_portal_test
+          POSTGRES_USER: vin_portal
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:ci
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_NAME: vin_portal_test
+          DATABASE_USER: vin_portal
+          DATABASE_PASSWORD: testpass
+
+      - name: Build
+        run: npm run build
+
+      - name: Run database migrations
+        run: npm run migration:run
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_NAME: vin_portal_test
+          DATABASE_USER: vin_portal
+          DATABASE_PASSWORD: testpass
+
+      - name: E2E tests
+        run: npm run test:e2e
+        env:
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_NAME: vin_portal_test
+          DATABASE_USER: vin_portal
+          DATABASE_PASSWORD: testpass
+
+      - name: npm audit — production deps (blocking)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit — all deps (advisory)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Upload backend coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: quality-gates
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Build
+        run: npm run build
+
+      - name: Run E2E smoke tests
+        run: npx playwright test --grep @smoke --project=chromium --project=mobile-chrome
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+  # ──────────────────────────────────────────────
+  # Checkmarx Enterprise Security Scans (REQUIRED)
+  # ──────────────────────────────────────────────
+  checkmarx:
+    name: Checkmarx Security Scan
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkmarx SAST + SCA Scan
+        uses: checkmarx/ast-github-action@v2
+        with:
+          project_name: vin-portal
+          cx_tenant: ${{ secrets.CHECKMARX_TENANT }}
+          cx_client_id: ${{ secrets.CHECKMARX_CLIENT_ID }}
+          cx_client_secret: ${{ secrets.CHECKMARX_CLIENT_SECRET }}
+          additional_params: --scan-types sast,sca --threshold "sast-high=0;sast-medium=5;sca-high=0"
+
+      - name: Check policy compliance
+        if: failure()
+        run: |
+          echo "::error::Checkmarx policy violation detected. Fix security findings before merging."
+          exit 1
+
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    needs: quality-gates
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Run Lighthouse CI
+        run: npm run lighthouse
+
+  # ──────────────────────────────────────────────
+  # Deployment Pipeline
+  # ──────────────────────────────────────────────
+
+  # ── DEV ──
+  deploy-dev:
+    name: Deploy Frontend to DEV
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/DEV' && github.event_name == 'push'
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Inject Datadog tokens
+        run: |
+          sed -i "s/REPLACE_WITH_DATADOG_CLIENT_TOKEN/${{ secrets.DD_CLIENT_TOKEN }}/g" src/environments/environment.prod.ts
+          sed -i "s/REPLACE_WITH_DATADOG_APP_ID/${{ secrets.DD_APPLICATION_ID }}/g" src/environments/environment.prod.ts
+          sed -i "s/env: 'prod'/env: '${{ vars.DD_ENV }}'/g" src/environments/environment.prod.ts
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload sourcemaps to Datadog
+        run: |
+          npx @datadog/datadog-ci sourcemaps upload dist/vin-portal/browser/ \
+            --service vin-portal \
+            --release-version ${{ github.sha }} \
+            --minified-path-prefix /
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+
+      - name: Remove sourcemaps from bundle
+        run: find dist/ -name "*.map" -delete
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/index.html"
+
+  deploy-backend-dev:
+    name: Deploy Backend to DEV
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/DEV' && github.event_name == 'push'
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        working-directory: backend
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }} \
+            -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest .
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }} --all-tags
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run migration:run
+        env:
+          DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+          DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          DATABASE_USER: ${{ secrets.DATABASE_USER }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --force-new-deployment
+
+  # ── QA ──
+  deploy-qa:
+    name: Deploy Frontend to QA
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/QA' && github.event_name == 'push'
+    environment: qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Inject Datadog tokens
+        run: |
+          sed -i "s/REPLACE_WITH_DATADOG_CLIENT_TOKEN/${{ secrets.DD_CLIENT_TOKEN }}/g" src/environments/environment.prod.ts
+          sed -i "s/REPLACE_WITH_DATADOG_APP_ID/${{ secrets.DD_APPLICATION_ID }}/g" src/environments/environment.prod.ts
+          sed -i "s/env: 'prod'/env: '${{ vars.DD_ENV }}'/g" src/environments/environment.prod.ts
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload sourcemaps to Datadog
+        run: |
+          npx @datadog/datadog-ci sourcemaps upload dist/vin-portal/browser/ \
+            --service vin-portal \
+            --release-version ${{ github.sha }} \
+            --minified-path-prefix /
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+
+      - name: Remove sourcemaps from bundle
+        run: find dist/ -name "*.map" -delete
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/index.html"
+
+  deploy-backend-qa:
+    name: Deploy Backend to QA
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/QA' && github.event_name == 'push'
+    environment: qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        working-directory: backend
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }} \
+            -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest .
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }} --all-tags
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run migration:run
+        env:
+          DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+          DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          DATABASE_USER: ${{ secrets.DATABASE_USER }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --force-new-deployment
+
+  # ── UAT ──
+  deploy-uat:
+    name: Deploy Frontend to UAT
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/UAT' && github.event_name == 'push'
+    environment: uat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Inject Datadog tokens
+        run: |
+          sed -i "s/REPLACE_WITH_DATADOG_CLIENT_TOKEN/${{ secrets.DD_CLIENT_TOKEN }}/g" src/environments/environment.prod.ts
+          sed -i "s/REPLACE_WITH_DATADOG_APP_ID/${{ secrets.DD_APPLICATION_ID }}/g" src/environments/environment.prod.ts
+          sed -i "s/env: 'prod'/env: '${{ vars.DD_ENV }}'/g" src/environments/environment.prod.ts
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload sourcemaps to Datadog
+        run: |
+          npx @datadog/datadog-ci sourcemaps upload dist/vin-portal/browser/ \
+            --service vin-portal \
+            --release-version ${{ github.sha }} \
+            --minified-path-prefix /
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+
+      - name: Remove sourcemaps from bundle
+        run: find dist/ -name "*.map" -delete
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/index.html"
+
+  deploy-backend-uat:
+    name: Deploy Backend to UAT
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/UAT' && github.event_name == 'push'
+    environment: uat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        working-directory: backend
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }} \
+            -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest .
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }} --all-tags
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run migration:run
+        env:
+          DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+          DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          DATABASE_USER: ${{ secrets.DATABASE_USER }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --force-new-deployment
+
+  # ── PROD ──
+  deploy-prod:
+    name: Deploy Frontend to PROD
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/PROD' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Inject Datadog tokens
+        run: |
+          sed -i "s/REPLACE_WITH_DATADOG_CLIENT_TOKEN/${{ secrets.DD_CLIENT_TOKEN }}/g" src/environments/environment.prod.ts
+          sed -i "s/REPLACE_WITH_DATADOG_APP_ID/${{ secrets.DD_APPLICATION_ID }}/g" src/environments/environment.prod.ts
+          sed -i "s/env: 'prod'/env: '${{ vars.DD_ENV }}'/g" src/environments/environment.prod.ts
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload sourcemaps to Datadog
+        run: |
+          npx @datadog/datadog-ci sourcemaps upload dist/vin-portal/browser/ \
+            --service vin-portal \
+            --release-version ${{ github.sha }} \
+            --minified-path-prefix /
+        env:
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+
+      - name: Remove sourcemaps from bundle
+        run: find dist/ -name "*.map" -delete
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/index.html"
+
+  deploy-backend-prod:
+    name: Deploy Backend to PROD
+    runs-on: ubuntu-latest
+    needs: [quality-gates, backend-quality-gates, e2e, checkmarx]
+    if: github.ref == 'refs/heads/PROD' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        working-directory: backend
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }} \
+            -t ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest .
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }} --all-tags
+
+      - name: Run database migrations
+        working-directory: backend
+        run: npm run migration:run
+        env:
+          DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+          DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+          DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+          DATABASE_USER: ${{ secrets.DATABASE_USER }}
+          DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --force-new-deployment

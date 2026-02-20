@@ -40,7 +40,7 @@ export class MockApiService {
   // ============== Contract Authentication ==============
 
   authenticateContract(
-    contractNumber: string,
+    vin7: string,
     lastName: string,
     zip: string
   ): Observable<ApiEnvelope<AuthenticateSuccessData>> {
@@ -64,14 +64,15 @@ export class MockApiService {
         this.lastAuthAttemptTime = now;
 
         // Check for valid test credentials
-        const validContracts: Record<string, { lastName: string; zip: string }> = {
-          'CONTRACT-001': { lastName: 'SMITH', zip: '30301' },
-          'CONTRACT-002': { lastName: 'JOHNSON', zip: '90210' },
-          'CONTRACT-OTP': { lastName: 'TESTUSER', zip: '12345' },
-          'CONTRACT-LOCKED': { lastName: 'LOCKED', zip: '99999' },
+        const validCredentials: Record<string, { lastName: string; zip: string }> = {
+          '1234567': { lastName: 'SMITH', zip: '30301' },
+          '7654321': { lastName: 'JONES', zip: '10001' },
+          '0TP7654': { lastName: 'TESTUSER', zip: '12345' },
+          'LOCKED1': { lastName: 'LOCKED', zip: '99999' },
         };
 
-        const expected = validContracts[contractNumber.toUpperCase()];
+        const normalized = vin7.toUpperCase();
+        const expected = validCredentials[normalized];
         if (!expected) {
           return this.errorResponse<AuthenticateSuccessData>(
             ApiErrorCodes.AUTH_NO_MATCH,
@@ -87,7 +88,7 @@ export class MockApiService {
         }
 
         // Check if contract requires OTP
-        if (contractNumber.toUpperCase() === 'CONTRACT-OTP') {
+        if (normalized === '0TP7654') {
           const challengeId = this.generateId('otp');
           this._otpChallenges.update((m) => {
             m.set(challengeId, {
@@ -113,7 +114,7 @@ export class MockApiService {
         }
 
         // Check if contract is locked
-        if (contractNumber.toUpperCase() === 'CONTRACT-LOCKED') {
+        if (normalized === 'LOCKED1') {
           return this.errorResponse<AuthenticateSuccessData>(
             ApiErrorCodes.CONTRACT_LOCKED,
             'This contract already has an additional vehicle registered.'
@@ -121,8 +122,8 @@ export class MockApiService {
         }
 
         // Successful authentication
-        const contractContextId = `ctx-${contractNumber.toLowerCase().replace('contract-', '')}`;
-        const contract = this.getOrCreateContract(contractContextId, contractNumber);
+        const contractContextId = `ctx-${normalized}`;
+        const contract = this.getOrCreateContract(contractContextId, normalized);
 
         return this.successResponse<AuthenticateSuccessData>({
           contractContextId,
@@ -505,21 +506,62 @@ export class MockApiService {
     );
   }
 
+  // ============== Document Operations ==============
+
+  generateDocument(requestId: string): Observable<Blob> {
+    return of(null).pipe(
+      delay(this.randomDelay(300, 800)),
+      map(() => {
+        // Generate a minimal valid PDF
+        const pdfContent = [
+          '%PDF-1.4',
+          '1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj',
+          '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj',
+          '3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj',
+          '4 0 obj<</Length 136>>stream',
+          'BT /F1 24 Tf 100 700 Td (VIN Portal - Confirmation) Tj ET',
+          `BT /F1 12 Tf 100 660 Td (Reference: ${requestId}) Tj ET`,
+          `BT /F1 12 Tf 100 640 Td (Date: ${new Date().toISOString()}) Tj ET`,
+          'BT /F1 12 Tf 100 600 Td (This is a confirmation stub document.) Tj ET',
+          'endstream endobj',
+          '5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj',
+          'xref',
+          'trailer<</Size 6/Root 1 0 R>>',
+          '%%EOF',
+        ].join('\n');
+
+        return new Blob([pdfContent], { type: 'application/pdf' });
+      })
+    );
+  }
+
+  emailDocument(
+    requestId: string,
+    email: string
+  ): Observable<ApiEnvelope<{ requestId: string; sent: boolean }>> {
+    return of(null).pipe(
+      delay(this.randomDelay(500, 1200)),
+      map(() => {
+        console.log(`[MockAPI] Document for request ${requestId} emailed to ${email}`);
+        return this.successResponse({ requestId, sent: true });
+      })
+    );
+  }
+
   // ============== Helpers ==============
 
   private initializeMockData(): void {
-    // Create some test contracts
     const contracts: MockContract[] = [
       {
-        id: 'ctx-001',
-        contractNumber: 'CONTRACT-001',
+        id: 'ctx-1234567',
+        contractNumber: '1234567',
         externalContractId: 'EXT-001',
         primaryVinMasked: '1HG******1234',
         hasAdditionalVin: false,
       },
       {
-        id: 'ctx-002',
-        contractNumber: 'CONTRACT-002',
+        id: 'ctx-7654321',
+        contractNumber: '7654321',
         externalContractId: 'EXT-002',
         primaryVinMasked: '5FN******5678',
         hasAdditionalVin: true,
@@ -538,7 +580,7 @@ export class MockApiService {
     const newContract: MockContract = {
       id,
       contractNumber,
-      externalContractId: `EXT-${contractNumber.replace('CONTRACT-', '')}`,
+      externalContractId: `EXT-${contractNumber}`,
       primaryVinMasked: '1XX******' + Math.random().toString().slice(2, 6),
       hasAdditionalVin: false,
     };

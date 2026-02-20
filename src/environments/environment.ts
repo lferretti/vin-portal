@@ -1,21 +1,6 @@
-/**
- * Development environment configuration
- */
-export interface Environment {
-  production: boolean;
-  apiBaseUrl: string;
-  sessionTtlMinutes: number;
-  features: {
-    captchaEnabled: boolean;
-    otpSimulation: boolean;
-    mockApi: boolean;
-  };
-  polling: {
-    initialIntervalMs: number;
-    slowIntervalMs: number;
-    maxDurationMs: number;
-  };
-}
+import { Environment } from './environment.model';
+
+export type { Environment };
 
 export const environment: Environment = {
   production: false,
@@ -30,6 +15,17 @@ export const environment: Environment = {
     initialIntervalMs: 10000,
     slowIntervalMs: 30000,
     maxDurationMs: 180000,
+  },
+  datadog: {
+    enabled: false,
+    clientToken: '',
+    applicationId: '',
+    site: 'datadoghq.com',
+    service: 'vin-portal',
+    env: 'dev',
+    sampleRate: 100,
+    trackInteractions: true,
+    trackResources: true,
   },
 };
 

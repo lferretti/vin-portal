@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -23,6 +24,7 @@ import {
 @Component({
   selector: 'app-vin-entry',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     ReactiveFormsModule,
@@ -41,8 +43,8 @@ import {
         <app-progress-stepper [steps]="steps" [currentStep]="1" />
 
         <div class="page-card mt-8">
-          <h1 class="text-2xl font-bold text-slate-900 mb-2">Enter Vehicle VIN</h1>
-          <p class="text-slate-600 mb-6">
+          <h1 class="mb-2 text-2xl font-bold text-slate-900">Enter Vehicle VIN</h1>
+          <p class="mb-6 text-slate-600">
             Enter the 17-character Vehicle Identification Number of the vehicle you want to add.
           </p>
 
@@ -62,7 +64,8 @@ import {
               <input
                 type="text"
                 [formControl]="vinControl"
-                class="form-input font-mono text-lg tracking-wider uppercase"
+                data-testid="vin-input"
+                class="form-input uppercase placeholder:normal-case"
                 [class.form-input-error]="vinControl.invalid && vinControl.touched"
                 (blur)="onVinBlur()"
                 (input)="onVinInput($event)"
@@ -81,8 +84,8 @@ import {
             }
 
             @if (decodedVin() && !isDecoding()) {
-              <div class="animate-fade-in">
-                <h3 class="text-sm font-medium text-slate-700 mb-2">Vehicle Information</h3>
+              <div class="animate-fade-in" data-testid="vehicle-info">
+                <h3 class="mb-2 text-sm font-medium text-slate-700">Vehicle Information</h3>
                 <app-vin-display [decoded]="decodedVin()!" />
               </div>
             }
@@ -100,21 +103,21 @@ import {
             }
           </div>
 
-          <div class="flex gap-3 mt-8">
+          <div class="mt-8 flex gap-3">
             <a
               routerLink="/authenticate"
-              class="flex-1 inline-flex items-center justify-center px-6 py-3 bg-white text-slate-700 font-semibold rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+              class="inline-flex flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
             >
               ← Back
             </a>
             <button
               type="button"
               (click)="onContinue()"
-              class="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              class="bg-primary-600 hover:bg-primary-700 inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               [disabled]="!canContinue()"
             >
               Continue
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
             </button>
@@ -128,6 +131,7 @@ export class VinEntryComponent {
   private readonly vinService = inject(VinService);
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -163,6 +167,8 @@ export class VinEntryComponent {
 
   readonly vinControl = new FormControl('', [Validators.required, vinValidator()]);
 
+  private lastDecodedVin = '';
+
   onVinInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     // Normalize to uppercase as user types
@@ -172,12 +178,13 @@ export class VinEntryComponent {
     // Clear previous results when user modifies VIN
     if (this.decodedVin() || this.eligibilityResult()) {
       this.consumerState.clearVinState();
+      this.lastDecodedVin = '';
     }
   }
 
   onVinBlur(): void {
     const vin = normalizeVin(this.vinControl.value || '');
-    if (vin.length === 17 && this.vinControl.valid) {
+    if (vin.length === 17 && this.vinControl.valid && vin !== this.lastDecodedVin) {
       this.decodeAndCheckEligibility(vin);
     }
   }
@@ -193,6 +200,7 @@ export class VinEntryComponent {
   }
 
   private decodeAndCheckEligibility(vin: string): void {
+    this.lastDecodedVin = vin;
     this.isDecoding.set(true);
     this.errorMessage.set(null);
     this.consumerState.clearVinState();
@@ -200,6 +208,7 @@ export class VinEntryComponent {
     this.vinService
       .decode({ vin })
       .pipe(
+        takeUntilDestroyed(this.destroyRef),
         tap((decodeResponse) => {
           this.isDecoding.set(false);
           if (decodeResponse.success && decodeResponse.data) {

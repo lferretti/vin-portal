@@ -1,4 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -6,7 +7,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ContractService } from '@core/services/contract.service';
 import { SessionService } from '@core/services/session.service';
 import { ConsumerStateService } from '../../state/consumer-state.service';
-import { zipValidator } from '@shared/validators';
+import { vinValidator, normalizeVin, zipValidator } from '@shared/validators';
 import {
   HeaderComponent,
   ProgressStepperComponent,
@@ -17,12 +18,13 @@ import type { StepConfig } from '@shared/components';
 import { AuthenticateContractRequest } from '@core/models';
 
 /**
- * Authenticate page - First step in the wizard
- * Collects contract credentials and authenticates the user
+ * Vehicle Lookup page - First step in the wizard
+ * Collects VIN and personal details, authenticates the user
  */
 @Component({
   selector: 'app-authenticate',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     ReactiveFormsModule,
@@ -39,31 +41,33 @@ import { AuthenticateContractRequest } from '@core/models';
         <app-progress-stepper [steps]="steps" [currentStep]="0" />
 
         <div class="page-card mt-8">
-          <h1 class="text-2xl font-bold text-slate-900 mb-2">Verify Your Contract</h1>
-          <p class="text-slate-600 mb-6">
-            Enter your contract details exactly as they appear on your warranty documents.
+          <h1 class="mb-2 text-2xl font-bold text-slate-900">Vehicle Lookup</h1>
+          <p class="mb-6 text-slate-600">
+            Enter your vehicle and personal details to find your warranty contract.
           </p>
 
           @if (errorMessage()) {
-            <app-alert-banner type="error" class="mb-6" [dismissible]="true" (dismiss)="clearError()">
+            <app-alert-banner type="error" class="mb-6" data-testid="auth-error" [dismissible]="true" (dismiss)="clearError()">
               {{ errorMessage() }}
             </app-alert-banner>
           }
 
-          <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-5">
+          <form [formGroup]="form" (ngSubmit)="onSubmit()" data-testid="auth-form" class="space-y-5">
             <app-form-field
-              label="Contract Number"
-              hint="Found on your warranty certificate"
-              [control]="form.controls.contractNumber"
+              label="VIN (last 7 characters or full VIN)"
+              hint="Found on your dashboard or driver's door frame"
+              [control]="form.controls.vin"
               [required]="true"
             >
               <input
                 type="text"
-                formControlName="contractNumber"
-                class="form-input"
-                [class.form-input-error]="form.controls.contractNumber.invalid && form.controls.contractNumber.touched"
+                formControlName="vin"
+                class="form-input uppercase placeholder:normal-case"
+                [class.form-input-error]="form.controls.vin.invalid && form.controls.vin.touched"
+                (input)="onVinInput($event)"
                 autocomplete="off"
-                placeholder="Enter your contract number"
+                maxlength="17"
+                placeholder="Enter at least the last 7 characters"
               />
             </app-form-field>
 
@@ -103,15 +107,15 @@ import { AuthenticateContractRequest } from '@core/models';
             <div class="pt-4">
               <button
                 type="submit"
-                class="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="bg-primary-600 hover:bg-primary-700 inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 [disabled]="form.invalid || isLoading()"
               >
                 @if (isLoading()) {
-                  <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                   Verifying...
                 } @else {
                   Continue
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
                 }
@@ -120,7 +124,7 @@ import { AuthenticateContractRequest } from '@core/models';
           </form>
 
           <p class="mt-6 text-center text-sm text-slate-500">
-            <a routerLink="/" class="text-primary-600 hover:underline">← Back to home</a>
+            <a routerLink="/" class="text-primary-600 hover:underline">&larr; Back to home</a>
           </p>
         </div>
       </main>
@@ -132,6 +136,7 @@ export class AuthenticateComponent {
   private readonly sessionService = inject(SessionService);
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -144,10 +149,16 @@ export class AuthenticateComponent {
   readonly errorMessage = signal<string | null>(null);
 
   readonly form = new FormGroup({
-    contractNumber: new FormControl('', [Validators.required, Validators.minLength(6)]),
+    vin: new FormControl('', [Validators.required, vinValidator()]),
     lastName: new FormControl('', [Validators.required]),
     zip: new FormControl('', [Validators.required, zipValidator()]),
   });
+
+  onVinInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    input.value = input.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+    this.form.controls.vin.setValue(input.value, { emitEvent: false });
+  }
 
   onSubmit(): void {
     if (this.form.invalid) {
@@ -158,13 +169,16 @@ export class AuthenticateComponent {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
+    const fullVin = normalizeVin(this.form.value.vin!);
+    const vin7 = fullVin.slice(-7);
+
     const request: AuthenticateContractRequest = {
-      contractNumber: this.form.value.contractNumber!.trim(),
+      vin7,
       lastName: this.form.value.lastName!.trim().toUpperCase(),
       zip: this.form.value.zip!.trim(),
     };
 
-    this.contractService.authenticate(request).subscribe({
+    this.contractService.authenticate(request).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.isLoading.set(false);
 
@@ -221,10 +235,11 @@ export class AuthenticateComponent {
           this.router.navigate(['/verify-otp']);
         }
         break;
-      case 'RATE_LIMITED':
+      case 'RATE_LIMITED': {
         const seconds = (apiError.details?.retryAfterSeconds as number) || 60;
         this.errorMessage.set(`Too many attempts. Please wait ${seconds} seconds and try again.`);
         break;
+      }
       case 'CONTRACT_LOCKED':
         this.errorMessage.set(
           'This contract already has an additional vehicle registered. Contact support for assistance.'
@@ -237,4 +252,3 @@ export class AuthenticateComponent {
     }
   }
 }
-

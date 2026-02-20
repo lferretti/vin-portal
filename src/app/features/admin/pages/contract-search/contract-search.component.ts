@@ -1,11 +1,11 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { HttpErrorResponse } from '@angular/common/http';
-
 import { AdminService } from '@core/services/admin.service';
-import { AdminContractSummary, VinAddStatus } from '@core/models';
+import { AdminContractSummary } from '@core/models';
 import { AlertBannerComponent } from '@shared/components';
+import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.util';
 
 /**
  * Admin contract search page
@@ -13,10 +13,11 @@ import { AlertBannerComponent } from '@shared/components';
 @Component({
   selector: 'app-contract-search',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, ReactiveFormsModule, AlertBannerComponent],
   template: `
     <div>
-      <h1 class="text-2xl font-bold text-slate-900 mb-6">Search Contracts</h1>
+      <h1 class="mb-6 text-2xl font-bold text-slate-900">Search Contracts</h1>
 
       @if (errorMessage()) {
         <app-alert-banner type="error" class="mb-6" [dismissible]="true" (dismiss)="clearError()">
@@ -27,7 +28,7 @@ import { AlertBannerComponent } from '@shared/components';
       <!-- Search Form -->
       <div class="card mb-6">
         <form [formGroup]="searchForm" (ngSubmit)="onSearch()" class="space-y-4">
-          <div class="grid md:grid-cols-3 gap-4">
+          <div class="grid gap-4 md:grid-cols-3">
             <div>
               <label for="contractNumber" class="form-label">Contract Number</label>
               <input
@@ -62,13 +63,13 @@ import { AlertBannerComponent } from '@shared/components';
           <div class="flex justify-end">
             <button
               type="submit"
-              class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+              class="bg-primary-600 hover:bg-primary-700 inline-flex items-center gap-2 rounded-lg px-6 py-2.5 font-semibold text-white transition-colors disabled:opacity-50"
               [disabled]="isSearching() || !hasSearchCriteria()"
             >
               @if (isSearching()) {
-                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
               } @else {
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               }
@@ -81,42 +82,42 @@ import { AlertBannerComponent } from '@shared/components';
       <!-- Results -->
       @if (hasSearched()) {
         <div class="card">
-          <h2 class="text-lg font-semibold text-slate-900 mb-4">
+          <h2 class="mb-4 text-lg font-semibold text-slate-900">
             Results ({{ results().length }})
           </h2>
 
           @if (results().length === 0) {
-            <p class="text-slate-500 text-center py-8">No contracts found matching your criteria.</p>
+            <p class="py-8 text-center text-slate-500">No contracts found matching your criteria.</p>
           } @else {
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-slate-200">
-                    <th class="text-left py-3 px-4 font-medium text-slate-500">External ID</th>
-                    <th class="text-left py-3 px-4 font-medium text-slate-500">Status</th>
-                    <th class="text-left py-3 px-4 font-medium text-slate-500">Committed VIN</th>
-                    <th class="text-left py-3 px-4 font-medium text-slate-500">Committed At</th>
-                    <th class="text-right py-3 px-4 font-medium text-slate-500">Actions</th>
+                    <th class="px-4 py-3 text-left font-medium text-slate-500">External ID</th>
+                    <th class="px-4 py-3 text-left font-medium text-slate-500">Status</th>
+                    <th class="px-4 py-3 text-left font-medium text-slate-500">Committed VIN</th>
+                    <th class="px-4 py-3 text-left font-medium text-slate-500">Committed At</th>
+                    <th class="px-4 py-3 text-right font-medium text-slate-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (contract of results(); track contract.contractContextId) {
                     <tr class="border-b border-slate-100 hover:bg-slate-50">
-                      <td class="py-3 px-4 font-mono text-slate-900">
+                      <td class="px-4 py-3 font-mono text-slate-900">
                         {{ contract.externalContractId }}
                       </td>
-                      <td class="py-3 px-4">
+                      <td class="px-4 py-3">
                         <span [class]="getStatusBadgeClass(contract.status)">
                           {{ formatStatus(contract.status) }}
                         </span>
                       </td>
-                      <td class="py-3 px-4 font-mono text-slate-600">
+                      <td class="px-4 py-3 font-mono text-slate-600">
                         {{ contract.committedVinMasked || '—' }}
                       </td>
-                      <td class="py-3 px-4 text-slate-600">
+                      <td class="px-4 py-3 text-slate-600">
                         {{ contract.committedAt || '—' }}
                       </td>
-                      <td class="py-3 px-4 text-right">
+                      <td class="px-4 py-3 text-right">
                         <a
                           [routerLink]="['/admin/contract', contract.contractContextId]"
                           class="text-primary-600 hover:text-primary-700 font-medium hover:underline"
@@ -137,6 +138,7 @@ import { AlertBannerComponent } from '@shared/components';
 })
 export class ContractSearchComponent {
   private readonly adminService = inject(AdminService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly isSearching = signal(false);
   readonly hasSearched = signal(false);
@@ -155,7 +157,7 @@ export class ContractSearchComponent {
   }
 
   onSearch(): void {
-    if (!this.hasSearchCriteria()) return;
+    if (!this.hasSearchCriteria() || this.isSearching()) return;
 
     this.isSearching.set(true);
     this.errorMessage.set(null);
@@ -166,7 +168,7 @@ export class ContractSearchComponent {
       requestId: this.searchForm.value.requestId || undefined,
     };
 
-    this.adminService.searchContracts(params).subscribe({
+    this.adminService.searchContracts(params).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.isSearching.set(false);
         this.hasSearched.set(true);
@@ -174,7 +176,7 @@ export class ContractSearchComponent {
           this.results.set(response.data.results);
         }
       },
-      error: (err: HttpErrorResponse) => {
+      error: () => {
         this.isSearching.set(false);
         this.hasSearched.set(true);
         this.results.set([]);
@@ -187,28 +189,7 @@ export class ContractSearchComponent {
     this.errorMessage.set(null);
   }
 
-  formatStatus(status: VinAddStatus): string {
-    const labels: Record<VinAddStatus, string> = {
-      [VinAddStatus.NOT_USED]: 'Not Used',
-      [VinAddStatus.PENDING]: 'Pending',
-      [VinAddStatus.COMMITTED_LOCKED]: 'Committed',
-      [VinAddStatus.FAILED_INELIGIBLE]: 'Failed - Ineligible',
-      [VinAddStatus.FAILED_DEPENDENCY]: 'Failed - Dependency',
-      [VinAddStatus.FAILED_VALIDATION]: 'Failed - Validation',
-      [VinAddStatus.CANCELLED]: 'Cancelled',
-    };
-    return labels[status] || status;
-  }
-
-  getStatusBadgeClass(status: VinAddStatus): string {
-    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
-    const variants: Record<string, string> = {
-      [VinAddStatus.COMMITTED_LOCKED]: `${base} bg-green-100 text-green-800`,
-      [VinAddStatus.PENDING]: `${base} bg-yellow-100 text-yellow-800`,
-      [VinAddStatus.NOT_USED]: `${base} bg-slate-100 text-slate-800`,
-      default: `${base} bg-red-100 text-red-800`,
-    };
-    return variants[status] || variants['default'];
-  }
+  readonly formatStatus = formatStatus;
+  readonly getStatusBadgeClass = getStatusBadgeClass;
 }
 

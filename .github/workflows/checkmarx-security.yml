@@ -1,0 +1,119 @@
+name: Checkmarx Security Scan
+
+on:
+  push:
+    branches: [DEV, QA, UAT, PROD]
+  schedule:
+    # Weekly full scan on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Scan type (full or incremental)'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - incremental
+
+env:
+  CX_PROJECT_NAME: ${{ github.repository }}
+
+jobs:
+  checkmarx-scan:
+    name: Checkmarx Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies (for SCA resolution)
+        run: npm ci --ignore-scripts
+
+      - name: Determine scan parameters
+        id: scan-config
+        run: |
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+
+          # Set thresholds based on branch/environment (min value is 1)
+          if [[ "$BRANCH_NAME" == "PROD" ]]; then
+            # Production: Strict thresholds for critical and high
+            echo "threshold=sast-critical=1;sast-high=1;sca-critical=1;sca-high=1;iac-security-critical=1;iac-security-high=1" >> $GITHUB_OUTPUT
+            echo "scan_types=sast,sca,iac-security,secret-detection" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH_NAME" == "UAT" ]]; then
+            # UAT: Strict but allow some high severity
+            echo "threshold=sast-critical=1;sast-high=3;sca-critical=1;sca-high=5;iac-security-critical=1;iac-security-high=3" >> $GITHUB_OUTPUT
+            echo "scan_types=sast,sca,iac-security,secret-detection" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH_NAME" == "QA" ]]; then
+            # QA: Moderate thresholds
+            echo "threshold=sast-critical=1;sast-high=5;sca-critical=1;sca-high=10;iac-security-critical=1;iac-security-high=5" >> $GITHUB_OUTPUT
+            echo "scan_types=sast,sca,iac-security,secret-detection" >> $GITHUB_OUTPUT
+          else
+            # DEV: Warning only for critical
+            echo "threshold=sast-critical=1;sca-critical=1;iac-security-critical=1" >> $GITHUB_OUTPUT
+            echo "scan_types=sast,sca,iac-security,secret-detection" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkmarx One Scan
+        id: checkmarx
+        uses: checkmarx/ast-github-action@main
+        with:
+          base_uri: ${{ secrets.CX_BASE_URI }}
+          cx_tenant: ${{ secrets.CX_TENANT }}
+          cx_client_id: ${{ secrets.CX_CLIENT_ID }}
+          cx_client_secret: ${{ secrets.CX_CLIENT_SECRET }}
+          project_name: ${{ env.CX_PROJECT_NAME }}
+          branch: ${{ github.ref_name }}
+          scan_params: >-
+            --scan-types ${{ steps.scan-config.outputs.scan_types }}
+            --sast-preset-name "Checkmarx Default"
+            --report-format sarif
+            --output-path .
+            --threshold "${{ steps.scan-config.outputs.threshold }}"
+            --sast-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --sca-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --file-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --debug
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: cx_result.sarif
+        continue-on-error: true
+
+      - name: Upload scan results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkmarx-results-${{ github.ref_name }}-${{ github.run_number }}
+          path: |
+            *.sarif
+            *.json
+          retention-days: 30
+
+      - name: Security scan summary
+        if: always()
+        run: |
+          echo "## Checkmarx Security Scan Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Types:** ${{ steps.scan-config.outputs.scan_types }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Thresholds:** ${{ steps.scan-config.outputs.threshold }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View detailed results in the Checkmarx One portal or GitHub Security tab." >> $GITHUB_STEP_SUMMARY

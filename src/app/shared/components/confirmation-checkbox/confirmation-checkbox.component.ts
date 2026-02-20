@@ -1,4 +1,4 @@
-import { Component, input, output, model } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 /**
@@ -7,10 +7,11 @@ import { FormsModule } from '@angular/forms';
 @Component({
   selector: 'app-confirmation-checkbox',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule],
   template: `
     <label
-      class="flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all"
+      class="flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all"
       [class.border-primary-500]="checked()"
       [class.bg-primary-50]="checked()"
       [class.border-slate-300]="!checked()"
@@ -20,7 +21,7 @@ import { FormsModule } from '@angular/forms';
         type="checkbox"
         [ngModel]="checked()"
         (ngModelChange)="onCheckedChange($event)"
-        class="mt-0.5 h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+        class="text-primary-600 focus:ring-primary-500 mt-0.5 h-5 w-5 rounded border-slate-300"
         [attr.aria-describedby]="describedBy()"
       />
       <span class="text-sm text-slate-700">

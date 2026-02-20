@@ -1,12 +1,11 @@
-import { Component, inject, signal, OnInit, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
-
 import { AdminService } from '@core/services/admin.service';
 import { VinService } from '@core/services/vin.service';
-import { VinAddStatus, VinRequestStatusData } from '@core/models';
+import { VinRequestStatusData } from '@core/models';
 import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/components';
+import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.util';
 
 /**
  * Admin contract detail page
@@ -15,22 +14,23 @@ import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/component
 @Component({
   selector: 'app-contract-detail',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, DatePipe, AlertBannerComponent, LoadingSpinnerComponent],
   template: `
     <div>
-      <div class="flex items-center gap-4 mb-6">
+      <div class="mb-6 flex items-center gap-4">
         <a
           routerLink="/admin/search"
           class="inline-flex items-center text-sm text-slate-500 hover:text-slate-700"
         >
-          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="mr-1 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
           Back to Search
         </a>
       </div>
 
-      <h1 class="text-2xl font-bold text-slate-900 mb-6">Contract Detail</h1>
+      <h1 class="mb-6 text-2xl font-bold text-slate-900">Contract Detail</h1>
 
       @if (errorMessage()) {
         <app-alert-banner type="error" class="mb-6" [dismissible]="true" (dismiss)="clearError()">
@@ -46,8 +46,8 @@ import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/component
         <div class="grid gap-6">
           <!-- Contract Info Card -->
           <div class="card">
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">Contract Information</h2>
-            <dl class="grid md:grid-cols-2 gap-4">
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Contract Information</h2>
+            <dl class="grid gap-4 md:grid-cols-2">
               <div>
                 <dt class="text-sm text-slate-500">Contract Context ID</dt>
                 <dd class="font-mono text-slate-900">{{ contractContextId() }}</dd>
@@ -70,8 +70,8 @@ import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/component
           <!-- Request Details Card -->
           @if (requestData()) {
             <div class="card">
-              <h2 class="text-lg font-semibold text-slate-900 mb-4">VIN Add Request</h2>
-              <dl class="grid md:grid-cols-2 gap-4">
+              <h2 class="mb-4 text-lg font-semibold text-slate-900">VIN Add Request</h2>
+              <dl class="grid gap-4 md:grid-cols-2">
                 <div>
                   <dt class="text-sm text-slate-500">Request ID</dt>
                   <dd class="font-mono text-slate-900">{{ requestData()!.requestId }}</dd>
@@ -111,15 +111,15 @@ import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/component
 
           <!-- Actions Card -->
           <div class="card">
-            <h2 class="text-lg font-semibold text-slate-900 mb-4">Actions</h2>
+            <h2 class="mb-4 text-lg font-semibold text-slate-900">Actions</h2>
             <div class="flex gap-3">
               @if (requestData()) {
                 <a
                   [routerLink]="['/admin/request', requestData()!.requestId]"
-                  class="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                  class="bg-primary-600 hover:bg-primary-700 inline-flex items-center gap-2 rounded-lg px-4 py-2 font-medium text-white transition-colors"
                 >
                   View Full Request Details
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                   </svg>
                 </a>
@@ -127,9 +127,9 @@ import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/component
               <button
                 type="button"
                 (click)="refresh()"
-                class="inline-flex items-center gap-2 px-4 py-2 bg-white text-slate-700 font-medium rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+                class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Refresh
@@ -174,28 +174,7 @@ export class ContractDetailComponent implements OnInit {
     this.isLoading.set(false);
   }
 
-  formatStatus(status: VinAddStatus): string {
-    const labels: Record<VinAddStatus, string> = {
-      [VinAddStatus.NOT_USED]: 'Not Used',
-      [VinAddStatus.PENDING]: 'Pending',
-      [VinAddStatus.COMMITTED_LOCKED]: 'Committed',
-      [VinAddStatus.FAILED_INELIGIBLE]: 'Failed - Ineligible',
-      [VinAddStatus.FAILED_DEPENDENCY]: 'Failed - Dependency',
-      [VinAddStatus.FAILED_VALIDATION]: 'Failed - Validation',
-      [VinAddStatus.CANCELLED]: 'Cancelled',
-    };
-    return labels[status] || status;
-  }
-
-  getStatusBadgeClass(status: VinAddStatus): string {
-    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium';
-    const variants: Record<string, string> = {
-      [VinAddStatus.COMMITTED_LOCKED]: `${base} bg-green-100 text-green-800`,
-      [VinAddStatus.PENDING]: `${base} bg-yellow-100 text-yellow-800`,
-      [VinAddStatus.NOT_USED]: `${base} bg-slate-100 text-slate-800`,
-      default: `${base} bg-red-100 text-red-800`,
-    };
-    return variants[status] || variants['default'];
-  }
+  readonly formatStatus = formatStatus;
+  readonly getStatusBadgeClass = getStatusBadgeClass;
 }
 

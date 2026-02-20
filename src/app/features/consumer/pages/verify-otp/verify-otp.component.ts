@@ -1,7 +1,9 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, OnInit } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
+import { interval, takeWhile } from 'rxjs';
 
 import { OtpService } from '@core/services/otp.service';
 import { SessionService } from '@core/services/session.service';
@@ -20,6 +22,7 @@ import type { StepConfig } from '@shared/components';
 @Component({
   selector: 'app-verify-otp',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     ReactiveFormsModule,
@@ -36,12 +39,12 @@ import type { StepConfig } from '@shared/components';
         <app-progress-stepper [steps]="steps" [currentStep]="0" />
 
         <div class="page-card mt-8">
-          <div class="text-center mb-6">
+          <div class="mb-6 text-center">
             <div
-              class="inline-flex items-center justify-center w-16 h-16 bg-primary-100 rounded-full mb-4"
+              class="bg-primary-100 mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full"
             >
               <svg
-                class="w-8 h-8 text-primary-600"
+                class="text-primary-600 h-8 w-8"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -54,7 +57,7 @@ import type { StepConfig } from '@shared/components';
                 />
               </svg>
             </div>
-            <h1 class="text-2xl font-bold text-slate-900 mb-2">Verify Your Identity</h1>
+            <h1 class="mb-2 text-2xl font-bold text-slate-900">Verify Your Identity</h1>
             <p class="text-slate-600">
               We've sent a verification code to
               <span class="font-medium">{{ maskedDestination() }}</span>
@@ -83,8 +86,8 @@ import type { StepConfig } from '@shared/components';
               <input
                 type="text"
                 [formControl]="codeControl"
-                class="form-input text-center text-2xl tracking-widest font-mono"
-                [class.form-input-error]="codeControl.invalid && codeControl.touched"
+                class="otp-input"
+                [class.otp-input-error]="codeControl.invalid && codeControl.touched"
                 autocomplete="one-time-code"
                 inputmode="numeric"
                 maxlength="6"
@@ -95,11 +98,11 @@ import type { StepConfig } from '@shared/components';
             <div class="pt-2">
               <button
                 type="submit"
-                class="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="bg-primary-600 hover:bg-primary-700 inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 [disabled]="codeControl.invalid || isVerifying()"
               >
                 @if (isVerifying()) {
-                  <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                   Verifying...
                 } @else {
                   Verify Code
@@ -109,11 +112,11 @@ import type { StepConfig } from '@shared/components';
           </form>
 
           <div class="mt-6 text-center">
-            <p class="text-sm text-slate-600 mb-2">Didn't receive a code?</p>
+            <p class="mb-2 text-sm text-slate-600">Didn't receive a code?</p>
             <button
               type="button"
               (click)="onResend()"
-              class="text-primary-600 hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              class="text-primary-600 font-medium hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               [disabled]="resendCooldown() > 0 || isSending()"
             >
               @if (isSending()) {
@@ -136,13 +139,12 @@ import type { StepConfig } from '@shared/components';
     </div>
   `,
 })
-export class VerifyOtpComponent implements OnInit, OnDestroy {
+export class VerifyOtpComponent implements OnInit {
   private readonly otpService = inject(OtpService);
   private readonly sessionService = inject(SessionService);
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
-
-  private resendInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -169,12 +171,6 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
     this.sendOtp();
   }
 
-  ngOnDestroy(): void {
-    if (this.resendInterval) {
-      clearInterval(this.resendInterval);
-    }
-  }
-
   onResend(): void {
     this.sendOtp();
   }
@@ -199,6 +195,7 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
         otpChallengeId: challengeId,
         code: this.codeControl.value!,
       })
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
           this.isVerifying.set(false);
@@ -238,7 +235,7 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
     this.successMessage.set(null);
     this.startResendCooldown();
 
-    this.otpService.send({ otpChallengeId: challengeId }).subscribe({
+    this.otpService.send({ otpChallengeId: challengeId }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.isSending.set(false);
         if (response.success) {
@@ -257,22 +254,14 @@ export class VerifyOtpComponent implements OnInit, OnDestroy {
   private startResendCooldown(): void {
     this.resendCooldown.set(60);
 
-    if (this.resendInterval) {
-      clearInterval(this.resendInterval);
-    }
-
-    this.resendInterval = setInterval(() => {
-      const current = this.resendCooldown();
-      if (current <= 1) {
-        this.resendCooldown.set(0);
-        if (this.resendInterval) {
-          clearInterval(this.resendInterval);
-          this.resendInterval = null;
-        }
-      } else {
-        this.resendCooldown.set(current - 1);
-      }
-    }, 1000);
+    interval(1000)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        takeWhile(() => this.resendCooldown() > 0)
+      )
+      .subscribe(() => {
+        this.resendCooldown.update((c) => c - 1);
+      });
   }
 
   private handleError(err: HttpErrorResponse): void {

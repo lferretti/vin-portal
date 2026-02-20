@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { HeaderComponent } from '@shared/components';
 
@@ -9,20 +9,21 @@ import { HeaderComponent } from '@shared/components';
 @Component({
   selector: 'app-landing',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, HeaderComponent],
   template: `
-    <div class="page-container bg-gradient-to-br from-slate-50 to-primary-50">
+    <div class="page-container to-primary-50 bg-gradient-to-br from-slate-50">
       <app-header />
 
       <main class="page-main flex items-center justify-center">
-        <div class="max-w-2xl mx-auto px-4 py-8 text-center">
+        <div class="mx-auto max-w-2xl px-4 py-8 text-center">
           <!-- Hero Section -->
-          <div class="mb-12 animate-fade-in">
+          <div class="animate-fade-in mb-12">
             <div
-              class="inline-flex items-center justify-center w-20 h-20 bg-primary-100 rounded-2xl mb-6"
+              class="bg-primary-100 mb-6 inline-flex h-20 w-20 items-center justify-center rounded-2xl"
             >
               <svg
-                class="w-10 h-10 text-primary-600"
+                class="text-primary-600 h-10 w-10"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -35,22 +36,22 @@ import { HeaderComponent } from '@shared/components';
                 />
               </svg>
             </div>
-            <h1 class="text-4xl font-bold text-slate-900 mb-4">
+            <h1 class="mb-4 text-4xl font-bold text-slate-900">
               Add an Additional Vehicle to Your Contract
             </h1>
-            <p class="text-lg text-slate-600 max-w-xl mx-auto">
+            <p class="mx-auto max-w-xl text-lg text-slate-600">
               Extend your warranty protection to a second vehicle with just a few simple steps.
             </p>
           </div>
 
           <!-- Info Cards -->
-          <div class="grid md:grid-cols-3 gap-6 mb-12">
-            <div class="card text-left animate-slide-up" style="animation-delay: 0.1s">
+          <div class="mb-12 grid gap-6 md:grid-cols-3">
+            <div class="card animate-slide-up text-left" style="animation-delay: 0.1s">
               <div
-                class="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center mb-4"
+                class="bg-primary-100 mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
               >
                 <svg
-                  class="w-6 h-6 text-primary-600"
+                  class="text-primary-600 h-6 w-6"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -63,18 +64,18 @@ import { HeaderComponent } from '@shared/components';
                   />
                 </svg>
               </div>
-              <h3 class="text-lg font-semibold text-slate-900 mb-2">One Additional Vehicle</h3>
-              <p class="text-slate-600 text-sm">
+              <h3 class="mb-2 text-lg font-semibold text-slate-900">One Additional Vehicle</h3>
+              <p class="text-sm text-slate-600">
                 You may add one additional VIN to your existing warranty contract.
               </p>
             </div>
 
-            <div class="card text-left animate-slide-up" style="animation-delay: 0.2s">
+            <div class="card animate-slide-up text-left" style="animation-delay: 0.2s">
               <div
-                class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-4"
+                class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100"
               >
                 <svg
-                  class="w-6 h-6 text-amber-600"
+                  class="h-6 w-6 text-amber-600"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -87,18 +88,18 @@ import { HeaderComponent } from '@shared/components';
                   />
                 </svg>
               </div>
-              <h3 class="text-lg font-semibold text-slate-900 mb-2">One-Time Change</h3>
-              <p class="text-slate-600 text-sm">
+              <h3 class="mb-2 text-lg font-semibold text-slate-900">One-Time Change</h3>
+              <p class="text-sm text-slate-600">
                 Once validated and committed, this change cannot be reversed.
               </p>
             </div>
 
-            <div class="card text-left animate-slide-up" style="animation-delay: 0.3s">
+            <div class="card animate-slide-up text-left" style="animation-delay: 0.3s">
               <div
-                class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4"
+                class="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100"
               >
                 <svg
-                  class="w-6 h-6 text-green-600"
+                  class="h-6 w-6 text-green-600"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -111,8 +112,8 @@ import { HeaderComponent } from '@shared/components';
                   />
                 </svg>
               </div>
-              <h3 class="text-lg font-semibold text-slate-900 mb-2">Same Class or Less</h3>
-              <p class="text-slate-600 text-sm">
+              <h3 class="mb-2 text-lg font-semibold text-slate-900">Same Class or Less</h3>
+              <p class="text-sm text-slate-600">
                 The additional vehicle must be the same class or lower than your primary vehicle.
               </p>
             </div>
@@ -122,10 +123,11 @@ import { HeaderComponent } from '@shared/components';
           <div class="animate-slide-up" style="animation-delay: 0.4s">
             <a
               routerLink="/authenticate"
-              class="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all duration-200 shadow-lg shadow-primary-500/25 hover:shadow-xl hover:shadow-primary-500/30"
+              data-testid="get-started"
+              class="bg-primary-600 hover:bg-primary-700 shadow-primary-500/25 hover:shadow-primary-500/30 inline-flex items-center justify-center gap-2 rounded-xl px-8 py-4 font-semibold text-white shadow-lg transition-all duration-200 hover:shadow-xl"
             >
               Get Started
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -143,7 +145,7 @@ import { HeaderComponent } from '@shared/components';
       </main>
 
       <!-- Footer -->
-      <footer class="py-6 text-center text-sm text-slate-500 border-t border-slate-200 bg-white">
+      <footer class="border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
         <p>&copy; {{ currentYear }} Vehicle Protection Portal. All rights reserved.</p>
       </footer>
     </div>

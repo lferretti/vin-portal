@@ -1,0 +1,14 @@
+# Default reviewers for all changes
+* @org/team
+
+# Security-sensitive paths require additional security review
+src/app/core/guards/ @org/team @org/security
+src/app/core/interceptors/ @org/team @org/security
+backend/src/common/guards/ @org/team @org/security
+backend/src/modules/auth/ @org/team @org/security
+
+# CI/CD and infrastructure require platform team review
+.github/ @org/team @org/platform
+docs/infra/ @org/team @org/platform
+backend/Dockerfile @org/team @org/platform
+docker-compose.yml @org/team @org/platform

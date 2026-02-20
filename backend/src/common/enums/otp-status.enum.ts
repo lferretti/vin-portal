@@ -1,0 +1,7 @@
+export enum OtpStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  VERIFIED = 'VERIFIED',
+  EXPIRED = 'EXPIRED',
+  LOCKED_OUT = 'LOCKED_OUT',
+}

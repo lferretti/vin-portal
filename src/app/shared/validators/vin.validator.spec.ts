@@ -31,13 +31,25 @@ describe('vinValidator', () => {
     });
   });
 
+  describe('valid partial VINs (7-17 characters)', () => {
+    it('should accept a 7-character VIN (last-7)', () => {
+      const control = new FormControl('1234567');
+      expect(validator(control)).toBeNull();
+    });
+
+    it('should accept a 10-character partial VIN', () => {
+      const control = new FormControl('3CZW123456');
+      expect(validator(control)).toBeNull();
+    });
+  });
+
   describe('invalid length', () => {
-    it('should return error for VIN shorter than 17 characters', () => {
-      const control = new FormControl('1HGCM8263');
+    it('should return error for VIN shorter than 7 characters', () => {
+      const control = new FormControl('ABC12');
       const result = validator(control);
 
       expect(result).toEqual({
-        vinLength: { required: 17, actual: 9 },
+        vinLength: { min: 7, max: 17, actual: 5 },
       });
     });
 
@@ -46,7 +58,7 @@ describe('vinValidator', () => {
       const result = validator(control);
 
       expect(result).toEqual({
-        vinLength: { required: 17, actual: 19 },
+        vinLength: { min: 7, max: 17, actual: 19 },
       });
     });
   });

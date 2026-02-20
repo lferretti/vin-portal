@@ -1,14 +1,14 @@
 import { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
 
 /**
- * VIN pattern: 17 characters, excludes I, O, Q
+ * VIN character pattern: excludes I, O, Q
  * These letters are excluded to avoid confusion with numbers
  */
-const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
+const VIN_CHARS_PATTERN = /^[A-HJ-NPR-Z0-9]+$/;
 
 /**
  * Validator for Vehicle Identification Numbers (VIN)
- * - Must be exactly 17 characters
+ * - Accepts 7 to 17 characters (minimum last-7 for auth, full VIN optional)
  * - Cannot contain I, O, or Q
  * - Case insensitive (normalized to uppercase)
  */
@@ -20,16 +20,17 @@ export function vinValidator(): ValidatorFn {
 
     const vin = control.value.toUpperCase().replace(/\s/g, '');
 
-    if (vin.length !== 17) {
+    if (vin.length < 7 || vin.length > 17) {
       return {
         vinLength: {
-          required: 17,
+          min: 7,
+          max: 17,
           actual: vin.length,
         },
       };
     }
 
-    if (!VIN_PATTERN.test(vin)) {
+    if (!VIN_CHARS_PATTERN.test(vin)) {
       return { vinFormat: true };
     }
 

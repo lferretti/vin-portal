@@ -4,8 +4,8 @@ import { OtpSummary } from './otp.model';
  * Request payload for contract authentication
  */
 export interface AuthenticateContractRequest {
-  /** Contract number (high entropy identifier) */
-  contractNumber: string;
+  /** Last 7 characters of the VIN */
+  vin7: string;
   /** Last name (exact match) */
   lastName: string;
   /** US ZIP code (5-digit or 5+4 format) */

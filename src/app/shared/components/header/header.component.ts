@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /**
@@ -7,25 +7,26 @@ import { RouterLink } from '@angular/router';
 @Component({
   selector: 'app-header',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink],
   template: `
     <header
-      class="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-sm"
+      class="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm"
     >
-      <a routerLink="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+      <a routerLink="/" class="flex items-center gap-3 transition-opacity hover:opacity-80">
         <div
-          class="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold text-lg"
+          class="bg-primary-600 flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white"
         >
           VP
         </div>
-        <span class="font-display font-semibold text-slate-900 text-lg hidden sm:inline">
+        <span class="font-display hidden text-lg font-semibold text-slate-900 sm:inline">
           Vehicle Protection Portal
         </span>
       </a>
       <nav>
         <a
           href="/support"
-          class="text-sm text-primary-600 hover:text-primary-700 hover:underline font-medium transition-colors"
+          class="text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors hover:underline"
         >
           Need Help?
         </a>

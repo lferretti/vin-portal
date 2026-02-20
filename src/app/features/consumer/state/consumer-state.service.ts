@@ -55,19 +55,13 @@ export class ConsumerStateService {
 
   readonly currentStep = computed(() => {
     if (!this._contractContextId()) return 0;
-    if (this._otpRequired() && !this._otpVerified()) return 1;
-    if (!this._enteredVin() || !this._eligibilityResult()) return 2;
-    if (!this.isEligible()) return 2;
-    if (!this._commitRequestId()) return 3;
-    return 4;
-  });
-
-  readonly canProceedToVinEntry = computed(() => {
-    return !!this._contractContextId() && (!this._otpRequired() || this._otpVerified());
+    if (this._otpRequired() && !this._otpVerified()) return 0;
+    if (!this._commitRequestId()) return 1;
+    return 2;
   });
 
   readonly canProceedToReview = computed(() => {
-    return this.canProceedToVinEntry() && this.isEligible();
+    return !!this._contractContextId() && (!this._otpRequired() || this._otpVerified());
   });
 
   readonly isContractLocked = computed(() => {
@@ -125,6 +119,13 @@ export class ConsumerStateService {
   setVinDecode(vin: string, decoded: VinDecoded): void {
     this._enteredVin.set(vin);
     this._decodedVin.set(decoded);
+  }
+
+  /**
+   * Set the entered VIN (from auth page, before decode)
+   */
+  setEnteredVin(vin: string): void {
+    this._enteredVin.set(vin);
   }
 
   /**

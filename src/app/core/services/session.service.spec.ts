@@ -144,6 +144,42 @@ describe('SessionService', () => {
       expect(service.consumeRedirectUrl()).toBe('/vin-entry');
       expect(service.consumeRedirectUrl()).toBeNull(); // Should be cleared
     });
+
+    it('should accept valid relative paths', () => {
+      service.setRedirectUrl('/vin-entry');
+      expect(service.consumeRedirectUrl()).toBe('/vin-entry');
+    });
+
+    it('should accept paths with query parameters', () => {
+      service.setRedirectUrl('/admin/search?q=test');
+      expect(service.consumeRedirectUrl()).toBe('/admin/search?q=test');
+    });
+
+    it('should reject absolute URLs', () => {
+      service.setRedirectUrl('https://evil.com');
+      expect(service.consumeRedirectUrl()).toBeNull();
+    });
+
+    it('should reject protocol-relative URLs', () => {
+      service.setRedirectUrl('//evil.com');
+      expect(service.consumeRedirectUrl()).toBeNull();
+    });
+
+    it('should reject URLs without leading slash', () => {
+      service.setRedirectUrl('evil.com');
+      expect(service.consumeRedirectUrl()).toBeNull();
+    });
+
+    it('should return null for tampered sessionStorage values', () => {
+      // Directly tamper with sessionStorage
+      sessionStorage.setItem('vin_portal_redirect_url', 'https://evil.com');
+      expect(service.consumeRedirectUrl()).toBeNull();
+    });
+
+    it('should return null for protocol-relative tampered values', () => {
+      sessionStorage.setItem('vin_portal_redirect_url', '//evil.com/callback');
+      expect(service.consumeRedirectUrl()).toBeNull();
+    });
   });
 
   describe('updateContractSummary', () => {

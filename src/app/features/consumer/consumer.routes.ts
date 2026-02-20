@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, otpRequiredGuard, eligibleGuard } from '@core/guards';
+import { authGuard, eligibleGuard, otpRequiredGuard } from '@core/guards';
 
 export const consumerRoutes: Routes = [
   {
@@ -14,7 +14,7 @@ export const consumerRoutes: Routes = [
       import('./pages/authenticate/authenticate.component').then(
         (m) => m.AuthenticateComponent
       ),
-    title: 'Verify Contract - VIN Portal',
+    title: 'Vehicle Lookup - VIN Portal',
   },
   {
     path: 'verify-otp',
@@ -28,7 +28,7 @@ export const consumerRoutes: Routes = [
     loadComponent: () =>
       import('./pages/vin-entry/vin-entry.component').then((m) => m.VinEntryComponent),
     canActivate: [authGuard],
-    title: 'Enter VIN - VIN Portal',
+    title: 'Enter Vehicle VIN - VIN Portal',
   },
   {
     path: 'review',
@@ -45,4 +45,3 @@ export const consumerRoutes: Routes = [
     title: 'Result - VIN Portal',
   },
 ];
-

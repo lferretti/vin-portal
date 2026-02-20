@@ -1,0 +1,108 @@
+name: Checkmarx PR Security Check
+
+on:
+  pull_request:
+    branches: [DEV, QA, UAT, PROD]
+    types: [opened, synchronize, reopened]
+
+env:
+  CX_PROJECT_NAME: ${{ github.repository }}
+
+jobs:
+  security-check:
+    name: PR Security Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies (for SCA resolution)
+        run: npm ci --ignore-scripts
+
+      - name: Determine target branch thresholds
+        id: scan-config
+        run: |
+          TARGET_BRANCH="${{ github.base_ref }}"
+
+          # Set thresholds based on target branch (min value is 1)
+          if [[ "$TARGET_BRANCH" == "PROD" ]]; then
+            # PRs to Production: Strict thresholds
+            echo "threshold=sast-critical=1;sast-high=1;sca-critical=1;sca-high=1;iac-security-critical=1" >> $GITHUB_OUTPUT
+          elif [[ "$TARGET_BRANCH" == "UAT" ]]; then
+            # PRs to UAT: Moderately strict
+            echo "threshold=sast-critical=1;sast-high=2;sca-critical=1;sca-high=3;iac-security-critical=1" >> $GITHUB_OUTPUT
+          elif [[ "$TARGET_BRANCH" == "QA" ]]; then
+            # PRs to QA: Allow some issues
+            echo "threshold=sast-critical=1;sast-high=5;sca-critical=1;sca-high=5;iac-security-critical=1" >> $GITHUB_OUTPUT
+          else
+            # PRs to DEV: Block only critical
+            echo "threshold=sast-critical=1;sca-critical=1;iac-security-critical=1" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkmarx Incremental Scan
+        id: checkmarx
+        uses: checkmarx/ast-github-action@main
+        with:
+          base_uri: ${{ secrets.CX_BASE_URI }}
+          cx_tenant: ${{ secrets.CX_TENANT }}
+          cx_client_id: ${{ secrets.CX_CLIENT_ID }}
+          cx_client_secret: ${{ secrets.CX_CLIENT_SECRET }}
+          project_name: ${{ env.CX_PROJECT_NAME }}
+          branch: ${{ github.head_ref }}
+          scan_params: >-
+            --scan-types sast,sca,secret-detection
+            --sast-incremental
+            --sast-preset-name "Checkmarx Default"
+            --report-format sarif
+            --output-path .
+            --threshold "${{ steps.scan-config.outputs.threshold }}"
+            --sast-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --sca-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --file-filter "!**/test/**/*,!**/*.spec.ts,!**/mock_data/**/*,!**/mock*.ts"
+            --debug
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: cx_result.sarif
+        continue-on-error: true
+
+      - name: Upload scan results artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkmarx-pr-results-${{ github.event.pull_request.number }}-${{ github.run_number }}
+          path: |
+            *.sarif
+            *.json
+          retention-days: 14
+
+      - name: PR Security summary
+        if: always()
+        run: |
+          echo "## Checkmarx PR Security Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Source Branch:** ${{ github.head_ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target Branch:** ${{ github.base_ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Type:** Incremental (SAST, SCA, Secret Detection)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Thresholds Applied" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ steps.scan-config.outputs.threshold }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View detailed results in the PR comments or GitHub Security tab." >> $GITHUB_STEP_SUMMARY

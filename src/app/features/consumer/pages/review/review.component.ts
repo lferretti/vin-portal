@@ -1,4 +1,5 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -19,6 +20,7 @@ import {
 @Component({
   selector: 'app-review',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     HeaderComponent,
@@ -35,8 +37,8 @@ import {
         <app-progress-stepper [steps]="steps" [currentStep]="2" />
 
         <div class="page-card mt-8">
-          <h1 class="text-2xl font-bold text-slate-900 mb-2">Review & Confirm</h1>
-          <p class="text-slate-600 mb-6">
+          <h1 class="mb-2 text-2xl font-bold text-slate-900">Review & Confirm</h1>
+          <p class="mb-6 text-slate-600">
             Please review the details below carefully. This action cannot be undone.
           </p>
 
@@ -47,10 +49,10 @@ import {
           }
 
           <!-- Summary Card -->
-          <div class="bg-slate-50 rounded-xl p-6 mb-6 space-y-6">
+          <div class="mb-6 space-y-6 rounded-xl bg-slate-50 p-6">
             <!-- Contract Summary -->
             <div>
-              <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-3">
+              <h3 class="mb-3 text-sm font-medium tracking-wide text-slate-500 uppercase">
                 Your Contract
               </h3>
               <div class="detail-list">
@@ -65,7 +67,7 @@ import {
 
             <!-- Vehicle to Add -->
             <div>
-              <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-3">
+              <h3 class="mb-3 text-sm font-medium tracking-wide text-slate-500 uppercase">
                 Vehicle to Add
               </h3>
               <div class="mb-3">
@@ -81,7 +83,7 @@ import {
 
             <!-- Eligibility Status -->
             <div class="flex items-center justify-between">
-              <span class="text-sm font-medium text-slate-500 uppercase tracking-wide">
+              <span class="text-sm font-medium tracking-wide text-slate-500 uppercase">
                 Eligibility
               </span>
               <span class="badge-success">✓ Eligible</span>
@@ -89,10 +91,10 @@ import {
           </div>
 
           <!-- Warning Box -->
-          <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
             <div class="flex gap-3">
               <svg
-                class="w-6 h-6 text-amber-600 flex-shrink-0"
+                class="h-6 w-6 flex-shrink-0 text-amber-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -106,7 +108,7 @@ import {
               </svg>
               <div>
                 <h4 class="font-semibold text-amber-800">Important</h4>
-                <p class="text-sm text-amber-700 mt-1">
+                <p class="mt-1 text-sm text-amber-700">
                   Adding this vehicle to your contract is a <strong>one-time, irreversible action</strong>.
                   Once confirmed, you will not be able to change or remove this vehicle.
                 </p>
@@ -121,10 +123,10 @@ import {
           />
 
           <!-- Action Buttons -->
-          <div class="flex gap-3 mt-8">
+          <div class="mt-8 flex gap-3">
             <a
               routerLink="/vin-entry"
-              class="flex-1 inline-flex items-center justify-center px-6 py-3 bg-white text-slate-700 font-semibold rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+              class="inline-flex flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
               [class.pointer-events-none]="isCommitting()"
               [class.opacity-50]="isCommitting()"
             >
@@ -133,11 +135,12 @@ import {
             <button
               type="button"
               (click)="onCommit()"
-              class="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              data-testid="confirm-submit"
+              class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-6 py-3 font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               [disabled]="!canCommit()"
             >
               @if (isCommitting()) {
-                <div class="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                 Confirming...
               } @else {
                 Confirm & Add Vehicle
@@ -153,6 +156,7 @@ export class ReviewComponent {
   private readonly vinService = inject(VinService);
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -194,6 +198,7 @@ export class ReviewComponent {
 
     this.vinService
       .commit({ vin, acceptIrreversible: true }, idempotencyKey)
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
           this.isCommitting.set(false);

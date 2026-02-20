@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input } from '@angular/core';
 
 /**
  * Loading spinner component with optional message
@@ -6,6 +6,7 @@ import { Component, input } from '@angular/core';
 @Component({
   selector: 'app-loading-spinner',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
       class="flex flex-col items-center justify-center gap-3"
@@ -13,7 +14,7 @@ import { Component, input } from '@angular/core';
       aria-live="polite"
     >
       <div
-        class="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"
+        class="border-primary-200 border-t-primary-600 h-8 w-8 animate-spin rounded-full border-4"
       ></div>
       @if (message()) {
         <p class="text-sm text-slate-600">{{ message() }}</p>

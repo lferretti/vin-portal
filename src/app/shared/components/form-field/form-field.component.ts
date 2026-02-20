@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
 import { FormControl } from '@angular/forms';
 
 /**
@@ -7,13 +7,14 @@ import { FormControl } from '@angular/forms';
 @Component({
   selector: 'app-form-field',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-1.5">
       @if (label()) {
         <label [for]="fieldId()" class="form-label">
           {{ label() }}
           @if (required()) {
-            <span class="text-red-500 ml-0.5">*</span>
+            <span class="ml-0.5 text-red-500">*</span>
           }
         </label>
       }
@@ -77,7 +78,7 @@ export class FormFieldComponent {
       return 'Invalid format.';
     }
     if (errors['vinLength']) {
-      return `VIN must be exactly 17 characters (currently ${errors['vinLength'].actual}).`;
+      return `VIN must be between 7 and 17 characters (currently ${errors['vinLength'].actual}).`;
     }
     if (errors['vinFormat']) {
       return 'VIN contains invalid characters. Letters I, O, and Q are not allowed.';

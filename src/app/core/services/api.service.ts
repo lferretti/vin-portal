@@ -48,5 +48,15 @@ export class ApiService {
   delete<T>(path: string, options?: { headers?: HttpHeaders }): Observable<ApiEnvelope<T>> {
     return this.http.delete<ApiEnvelope<T>>(`${this.baseUrl}${path}`, options);
   }
+
+  /**
+   * Perform a GET request that returns a Blob (for binary downloads)
+   */
+  getBlob(path: string, options?: { headers?: HttpHeaders }): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}${path}`, {
+      ...options,
+      responseType: 'blob',
+    });
+  }
 }
 

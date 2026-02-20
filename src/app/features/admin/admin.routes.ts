@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { AdminLayoutComponent } from './layout/admin-layout.component';
+import { authGuard } from '@core/guards';
 
 /**
  * Admin portal routes with layout wrapper
@@ -8,6 +9,7 @@ export const adminRoutes: Routes = [
   {
     path: '',
     component: AdminLayoutComponent,
+    canActivate: [authGuard],
     children: [
       {
         path: '',

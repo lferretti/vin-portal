@@ -124,6 +124,48 @@ h3 { font-size: 1.25rem; line-height: 1.75rem; }
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
 }
 
+/* OTP code input — intentionally overrides form-input typography for a
+   centered, monospaced, large-character code entry experience. */
+.otp-input {
+  display: block;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(203 213 225); /* slate-300 */
+  border-radius: 0.5rem;
+  color: rgb(15 23 42); /* slate-900 */
+  background-color: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  letter-spacing: 0.1em;
+}
+
+.otp-input::placeholder {
+  color: rgb(148 163 184); /* slate-400 */
+  font-family: var(--font-mono);
+}
+
+.otp-input:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+.otp-input:disabled {
+  background-color: rgb(241 245 249); /* slate-100 */
+  cursor: not-allowed;
+}
+
+.otp-input-error {
+  border-color: var(--color-error);
+}
+
+.otp-input-error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+
 .form-label {
   display: block;
   font-size: 0.875rem;

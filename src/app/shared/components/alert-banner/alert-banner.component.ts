@@ -1,4 +1,4 @@
-import { Component, input, output, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
 import { NgClass } from '@angular/common';
 
 export type AlertType = 'success' | 'warning' | 'error' | 'info';
@@ -10,6 +10,7 @@ export type AlertType = 'success' | 'warning' | 'error' | 'info';
 @Component({
   selector: 'app-alert-banner',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgClass],
   template: `
     <div
@@ -17,7 +18,7 @@ export type AlertType = 'success' | 'warning' | 'error' | 'info';
       role="alert"
       [attr.aria-live]="type() === 'error' ? 'assertive' : 'polite'"
     >
-      <span class="text-lg flex-shrink-0">{{ icon() }}</span>
+      <span class="flex-shrink-0 text-lg">{{ icon() }}</span>
       <div class="flex-1 text-sm">
         <ng-content></ng-content>
       </div>
@@ -26,9 +27,9 @@ export type AlertType = 'success' | 'warning' | 'error' | 'info';
           type="button"
           (click)="dismiss.emit()"
           aria-label="Dismiss"
-          class="text-current opacity-70 hover:opacity-100 transition-opacity p-1 -m-1"
+          class="-m-1 p-1 text-current opacity-70 transition-opacity hover:opacity-100"
         >
-          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+          <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
             <path
               fill-rule="evenodd"
               d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"

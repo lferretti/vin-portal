@@ -1,14 +1,19 @@
-import { Component, inject, signal, computed, OnInit, OnDestroy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed, OnInit, input } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { interval, Subscription, switchMap, takeWhile, tap } from 'rxjs';
+import { interval, switchMap, takeWhile, tap } from 'rxjs';
 
 import { VinService } from '@core/services/vin.service';
+import { DocumentService } from '@core/services/document.service';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import { VinAddStatus, VinRequestStatusData, isTerminalStatus } from '@core/models';
 import {
   HeaderComponent,
   ProgressStepperComponent,
+  AlertBannerComponent,
+  FormFieldComponent,
   VinDisplayComponent,
   LoadingSpinnerComponent,
 } from '@shared/components';
@@ -21,11 +26,15 @@ import type { StepConfig } from '@shared/components';
 @Component({
   selector: 'app-result',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
     DatePipe,
+    ReactiveFormsModule,
     HeaderComponent,
     ProgressStepperComponent,
+    AlertBannerComponent,
+    FormFieldComponent,
     VinDisplayComponent,
     LoadingSpinnerComponent,
   ],
@@ -36,15 +45,15 @@ import type { StepConfig } from '@shared/components';
       <main class="page-main">
         <app-progress-stepper [steps]="steps" [currentStep]="3" />
 
-        <div class="page-card mt-8 text-center">
+        <div class="page-card mt-8 text-center" data-testid="request-status">
           @switch (status()) {
             @case ('COMMITTED_LOCKED') {
               <div class="animate-fade-in">
                 <div
-                  class="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6"
+                  class="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-green-100"
                 >
                   <svg
-                    class="w-10 h-10 text-green-600"
+                    class="h-10 w-10 text-green-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -57,8 +66,8 @@ import type { StepConfig } from '@shared/components';
                     />
                   </svg>
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900 mb-2">Vehicle Added Successfully!</h1>
-                <p class="text-slate-600 mb-8">
+                <h1 class="mb-2 text-2xl font-bold text-slate-900">Vehicle Added Successfully!</h1>
+                <p class="mb-8 text-slate-600">
                   Your additional vehicle has been added to your warranty contract.
                 </p>
 
@@ -68,7 +77,7 @@ import type { StepConfig } from '@shared/components';
                   </div>
                 }
 
-                <div class="bg-slate-50 rounded-lg p-4 text-left mb-6">
+                <div class="mb-6 rounded-lg bg-slate-50 p-4 text-left">
                   <dl class="space-y-2 text-sm">
                     <div class="flex justify-between">
                       <dt class="text-slate-500">VIN</dt>
@@ -85,9 +94,93 @@ import type { StepConfig } from '@shared/components';
                   </dl>
                 </div>
 
+                <!-- Confirmation Document -->
+                <div class="mb-6 rounded-lg border border-slate-200 p-5 text-left" data-testid="document-section">
+                  <h3 class="mb-3 text-sm font-semibold text-slate-900">Confirmation Document</h3>
+
+                  @if (downloadError()) {
+                    <app-alert-banner type="error" class="mb-3" [dismissible]="true" (dismiss)="downloadError.set(null)">
+                      {{ downloadError() }}
+                    </app-alert-banner>
+                  }
+
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      (click)="onDownloadPdf()"
+                      data-testid="download-pdf-btn"
+                      class="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      [disabled]="isDownloading()"
+                    >
+                      @if (isDownloading()) {
+                        <div class="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
+                        Downloading...
+                      } @else {
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download PDF
+                      }
+                    </button>
+
+                    <button
+                      type="button"
+                      (click)="showEmailSection.set(!showEmailSection())"
+                      class="text-primary-600 text-sm font-medium hover:underline"
+                    >
+                      {{ showEmailSection() ? 'Hide email' : 'Email me a copy' }}
+                    </button>
+                  </div>
+
+                  @if (showEmailSection()) {
+                    <div class="animate-fade-in mt-4">
+                      @if (emailSent()) {
+                        <app-alert-banner type="success">
+                          Confirmation sent to {{ emailControl.value }}.
+                        </app-alert-banner>
+                      } @else {
+                        @if (emailError()) {
+                          <app-alert-banner type="error" class="mb-3" [dismissible]="true" (dismiss)="emailError.set(null)">
+                            {{ emailError() }}
+                          </app-alert-banner>
+                        }
+
+                        <div class="flex items-start gap-3">
+                          <div class="flex-1">
+                            <app-form-field label="" [control]="emailControl">
+                              <input
+                                type="email"
+                                [formControl]="emailControl"
+                                class="form-input"
+                                [class.form-input-error]="emailControl.invalid && emailControl.touched"
+                                placeholder="your@email.com"
+                                data-testid="email-input"
+                              />
+                            </app-form-field>
+                          </div>
+                          <button
+                            type="button"
+                            (click)="onEmailDocument()"
+                            data-testid="send-email-btn"
+                            class="bg-primary-600 hover:bg-primary-700 mt-0.5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                            [disabled]="emailControl.invalid || isSendingEmail()"
+                          >
+                            @if (isSendingEmail()) {
+                              <div class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                              Sending...
+                            } @else {
+                              Send
+                            }
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+
                 <a
                   routerLink="/"
-                  class="inline-flex items-center justify-center px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
+                  class="bg-primary-600 hover:bg-primary-700 inline-flex items-center justify-center rounded-lg px-6 py-3 font-semibold text-white transition-colors"
                 >
                   Done
                 </a>
@@ -99,12 +192,12 @@ import type { StepConfig } from '@shared/components';
                 <div class="mb-6">
                   <app-loading-spinner />
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900 mb-2">Processing Your Request</h1>
-                <p class="text-slate-600 mb-6">
+                <h1 class="mb-2 text-2xl font-bold text-slate-900">Processing Your Request</h1>
+                <p class="mb-6 text-slate-600">
                   Your request is being processed. This may take a few moments.
                 </p>
 
-                <div class="bg-blue-50 rounded-lg p-4 mb-6">
+                <div class="mb-6 rounded-lg bg-blue-50 p-4">
                   <p class="text-sm text-blue-800">
                     Reference: <span class="mono">{{ requestId() }}</span>
                   </p>
@@ -119,9 +212,9 @@ import type { StepConfig } from '@shared/components';
                   <button
                     type="button"
                     (click)="refreshStatus()"
-                    class="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-slate-700 font-semibold rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-6 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                   >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                     Check Status
@@ -133,10 +226,10 @@ import type { StepConfig } from '@shared/components';
             @case ('FAILED_INELIGIBLE') {
               <div class="animate-fade-in">
                 <div
-                  class="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-6"
+                  class="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-red-100"
                 >
                   <svg
-                    class="w-10 h-10 text-red-600"
+                    class="h-10 w-10 text-red-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -149,14 +242,14 @@ import type { StepConfig } from '@shared/components';
                     />
                   </svg>
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900 mb-2">Vehicle Not Eligible</h1>
-                <p class="text-slate-600 mb-6">
+                <h1 class="mb-2 text-2xl font-bold text-slate-900">Vehicle Not Eligible</h1>
+                <p class="mb-6 text-slate-600">
                   {{ statusData()?.eligibilityReasonCode || 'This vehicle could not be added to your contract.' }}
                 </p>
 
                 <a
                   routerLink="/vin-entry"
-                  class="inline-flex items-center justify-center px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
+                  class="bg-primary-600 hover:bg-primary-700 inline-flex items-center justify-center rounded-lg px-6 py-3 font-semibold text-white transition-colors"
                 >
                   Try Another Vehicle
                 </a>
@@ -166,10 +259,10 @@ import type { StepConfig } from '@shared/components';
             @case ('FAILED_DEPENDENCY') {
               <div class="animate-fade-in">
                 <div
-                  class="inline-flex items-center justify-center w-20 h-20 bg-amber-100 rounded-full mb-6"
+                  class="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-100"
                 >
                   <svg
-                    class="w-10 h-10 text-amber-600"
+                    class="h-10 w-10 text-amber-600"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -182,12 +275,12 @@ import type { StepConfig } from '@shared/components';
                     />
                   </svg>
                 </div>
-                <h1 class="text-2xl font-bold text-slate-900 mb-2">Unable to Complete Request</h1>
-                <p class="text-slate-600 mb-6">
+                <h1 class="mb-2 text-2xl font-bold text-slate-900">Unable to Complete Request</h1>
+                <p class="mb-6 text-slate-600">
                   We encountered an issue processing your request. Please contact support with your reference number.
                 </p>
 
-                <div class="bg-slate-50 rounded-lg p-4 mb-6">
+                <div class="mb-6 rounded-lg bg-slate-50 p-4">
                   <p class="text-sm text-slate-600">
                     Reference: <span class="mono font-medium">{{ requestId() }}</span>
                   </p>
@@ -195,7 +288,7 @@ import type { StepConfig } from '@shared/components';
 
                 <a
                   href="/support"
-                  class="inline-flex items-center justify-center px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg hover:bg-primary-700 transition-colors"
+                  class="bg-primary-600 hover:bg-primary-700 inline-flex items-center justify-center rounded-lg px-6 py-3 font-semibold text-white transition-colors"
                 >
                   Contact Support
                 </a>
@@ -213,12 +306,12 @@ import type { StepConfig } from '@shared/components';
     </div>
   `,
 })
-export class ResultComponent implements OnInit, OnDestroy {
+export class ResultComponent implements OnInit {
   private readonly vinService = inject(VinService);
+  private readonly documentService = inject(DocumentService);
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
-
-  private pollingSubscription: Subscription | null = null;
+  private readonly destroyRef = inject(DestroyRef);
 
   // Route parameter
   requestId = input.required<string>();
@@ -235,12 +328,21 @@ export class ResultComponent implements OnInit, OnDestroy {
   readonly isPolling = signal(false);
   readonly pollCount = signal(0);
 
+  // Document download/email state
+  readonly isDownloading = signal(false);
+  readonly downloadError = signal<string | null>(null);
+  readonly showEmailSection = signal(false);
+  readonly emailControl = new FormControl('', [Validators.required, Validators.email]);
+  readonly isSendingEmail = signal(false);
+  readonly emailSent = signal(false);
+  readonly emailError = signal<string | null>(null);
+
   readonly isSuccess = computed(() => this.status() === VinAddStatus.COMMITTED_LOCKED);
   readonly isPending = computed(() => this.status() === VinAddStatus.PENDING);
   readonly isFailed = computed(() => {
     const s = this.status();
-    return s === VinAddStatus.FAILED_INELIGIBLE || 
-           s === VinAddStatus.FAILED_DEPENDENCY || 
+    return s === VinAddStatus.FAILED_INELIGIBLE ||
+           s === VinAddStatus.FAILED_DEPENDENCY ||
            s === VinAddStatus.FAILED_VALIDATION;
   });
 
@@ -248,8 +350,56 @@ export class ResultComponent implements OnInit, OnDestroy {
     this.loadStatus();
   }
 
-  ngOnDestroy(): void {
-    this.stopPolling();
+  onDownloadPdf(): void {
+    this.isDownloading.set(true);
+    this.downloadError.set(null);
+
+    this.documentService
+      .downloadPdf(this.requestId())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (blob) => {
+          this.isDownloading.set(false);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `confirmation-${this.requestId()}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+        error: () => {
+          this.isDownloading.set(false);
+          this.downloadError.set('Unable to download document. Please try again.');
+        },
+      });
+  }
+
+  onEmailDocument(): void {
+    if (this.emailControl.invalid) {
+      this.emailControl.markAsTouched();
+      return;
+    }
+
+    this.isSendingEmail.set(true);
+    this.emailError.set(null);
+
+    this.documentService
+      .emailDocument(this.requestId(), this.emailControl.value!)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.isSendingEmail.set(false);
+          if (response.success && response.data?.sent) {
+            this.emailSent.set(true);
+          } else {
+            this.emailError.set('Unable to send email. Please try again.');
+          }
+        },
+        error: () => {
+          this.isSendingEmail.set(false);
+          this.emailError.set('Unable to send email. Please try again.');
+        },
+      });
   }
 
   refreshStatus(): void {
@@ -260,7 +410,7 @@ export class ResultComponent implements OnInit, OnDestroy {
     const reqId = this.requestId();
     if (!reqId) return;
 
-    this.vinService.getStatus(reqId).subscribe({
+    this.vinService.getStatus(reqId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         if (response.success && response.data) {
           this.statusData.set(response.data);
@@ -283,14 +433,15 @@ export class ResultComponent implements OnInit, OnDestroy {
   }
 
   private startPolling(): void {
-    if (this.pollingSubscription) return;
+    if (this.isPolling()) return;
 
     this.isPolling.set(true);
     this.pollCount.set(0);
 
     // Poll every 10 seconds, max 18 times (~3 minutes)
-    this.pollingSubscription = interval(10000)
+    interval(10000)
       .pipe(
+        takeUntilDestroyed(this.destroyRef),
         tap(() => this.pollCount.update((c) => c + 1)),
         switchMap(() => this.vinService.getStatus(this.requestId())),
         takeWhile((res) => {
@@ -306,22 +457,14 @@ export class ResultComponent implements OnInit, OnDestroy {
             this.consumerState.updateCommitStatus(response.data.status);
 
             if (isTerminalStatus(response.data.status)) {
-              this.stopPolling();
+              this.isPolling.set(false);
             }
           }
         },
         complete: () => {
-          this.stopPolling();
+          this.isPolling.set(false);
         },
       });
-  }
-
-  private stopPolling(): void {
-    this.isPolling.set(false);
-    if (this.pollingSubscription) {
-      this.pollingSubscription.unsubscribe();
-      this.pollingSubscription = null;
-    }
   }
 }
 

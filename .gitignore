@@ -37,6 +37,20 @@ yarn-error.log
 testem.log
 /typings
 
+# Backend
+backend/node_modules/
+backend/dist/
+backend/.env
+backend/coverage/
+
+# Testing
+/playwright-report/
+/test-results/
+
+# Claude Code
+.claude/settings.local.json
+.playwright-mcp/
+
 # System files
 .DS_Store
 Thumbs.db

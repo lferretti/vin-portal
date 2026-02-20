@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input } from '@angular/core';
 import { NgClass } from '@angular/common';
 
 export interface StepConfig {
@@ -13,6 +13,7 @@ export interface StepConfig {
 @Component({
   selector: 'app-progress-stepper',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgClass],
   template: `
     <nav aria-label="Progress" class="py-4">
@@ -21,11 +22,11 @@ export interface StepConfig {
           <li class="flex items-center">
             <div class="flex items-center gap-2">
               <span
-                class="flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-all duration-200"
+                class="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-all duration-200"
                 [ngClass]="getStepClasses(i)"
               >
                 @if (i < currentStep()) {
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                     <path
                       fill-rule="evenodd"
                       d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -37,7 +38,7 @@ export interface StepConfig {
                 }
               </span>
               <span
-                class="text-sm font-medium hidden sm:inline"
+                class="hidden text-sm font-medium sm:inline"
                 [ngClass]="getLabelClasses(i)"
               >
                 {{ step.label }}
@@ -45,7 +46,7 @@ export interface StepConfig {
             </div>
             @if (i < steps().length - 1) {
               <div
-                class="w-8 sm:w-12 h-0.5 mx-2 transition-colors duration-200"
+                class="mx-2 h-0.5 w-8 transition-colors duration-200 sm:w-12"
                 [ngClass]="getConnectorClasses(i)"
               ></div>
             }

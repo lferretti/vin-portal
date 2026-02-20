@@ -39,6 +39,16 @@ export class AdminService {
     sourceIp: string,
     userAgent: string,
   ) {
+    if (!query.contractNumber && !query.externalContractId && !query.requestId) {
+      throw new HttpException(
+        {
+          code: 'VALIDATION_ERROR',
+          message: 'At least one search criterion is required.',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
     const qb = this.contractRepo.createQueryBuilder('cc');
 
     if (query.contractNumber) {

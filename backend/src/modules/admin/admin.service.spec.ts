@@ -67,13 +67,19 @@ describe('AdminService', () => {
   });
 
   describe('searchContracts', () => {
+    it('should throw 400 when no search criteria provided', async () => {
+      await expect(
+        service.searchContracts({}, 'corr', '127.0.0.1', 'agent'),
+      ).rejects.toThrow('At least one search criterion is required');
+    });
+
     it('should return empty results when no contracts match', async () => {
-      const result = await service.searchContracts({}, correlationId, sourceIp, userAgent);
+      const result = await service.searchContracts({ externalContractId: 'ext-0' }, correlationId, sourceIp, userAgent);
       expect(result.results).toEqual([]);
     });
 
     it('should emit ADMIN_VIEW audit event', async () => {
-      await service.searchContracts({}, correlationId, sourceIp, userAgent);
+      await service.searchContracts({ externalContractId: 'ext-0' }, correlationId, sourceIp, userAgent);
       expect(auditService.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           eventType: 'ADMIN_VIEW',
@@ -139,7 +145,7 @@ describe('AdminService', () => {
         },
       ]);
 
-      const result = await service.searchContracts({}, correlationId, sourceIp, userAgent);
+      const result = await service.searchContracts({ externalContractId: 'ext-1' }, correlationId, sourceIp, userAgent);
       expect(result.results).toEqual([
         {
           contractContextId: 'ctx-1',

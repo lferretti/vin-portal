@@ -12,6 +12,7 @@ import {
   VinRequestStatusData,
   VinAddStatus,
   AdminContractSearchData,
+  AdminContractDetailData,
   AdminRequestDetailData,
   AdminNoteResponseData,
   AdminLoginResponseData,
@@ -479,6 +480,38 @@ export class MockApiService {
           }));
 
         return this.successResponse<AdminContractSearchData>({ results });
+      })
+    );
+  }
+
+  getContractDetail(contractContextId: string): Observable<ApiEnvelope<AdminContractDetailData>> {
+    return of(null).pipe(
+      delay(this.randomDelay(300, 800)),
+      map(() => {
+        const contract = this._contracts().get(contractContextId);
+        if (!contract) {
+          return this.errorResponse<AdminContractDetailData>(
+            ApiErrorCodes.CONTRACT_NOT_FOUND,
+            'Contract not found.'
+          );
+        }
+
+        const requests = Array.from(this._requests().values())
+          .filter((r) => r.contractContextId === contractContextId)
+          .map((r) => ({
+            requestId: r.id,
+            status: r.status,
+            createdAt: r.createdAt.toISOString(),
+          }));
+
+        return this.successResponse<AdminContractDetailData>({
+          contractContextId: contract.id,
+          externalContractId: contract.externalContractId,
+          status: contract.hasAdditionalVin ? VinAddStatus.COMMITTED_LOCKED : VinAddStatus.NOT_USED,
+          committedVinMasked: contract.additionalVinMasked ?? null,
+          committedAt: contract.additionalVinCommittedAt ?? null,
+          requests,
+        });
       })
     );
   }

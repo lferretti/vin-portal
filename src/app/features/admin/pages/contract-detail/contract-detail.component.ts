@@ -1,9 +1,9 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, OnInit, input, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { AdminService } from '@core/services/admin.service';
-import { VinService } from '@core/services/vin.service';
-import { VinRequestStatusData } from '@core/models';
+import { AdminContractDetailData, AdminRequestDetailData } from '@core/models';
 import { AlertBannerComponent, LoadingSpinnerComponent } from '@shared/components';
 import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.util';
 
@@ -53,9 +53,17 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
                 <dd class="font-mono text-slate-900">{{ contractContextId() }}</dd>
               </div>
               <div>
+                <dt class="text-sm text-slate-500">External Contract ID</dt>
+                <dd class="font-mono text-slate-900">{{ contractData()?.externalContractId || '—' }}</dd>
+              </div>
+              <div>
                 <dt class="text-sm text-slate-500">Status</dt>
                 <dd>
-                  @if (requestData()) {
+                  @if (contractData()) {
+                    <span [class]="getStatusBadgeClass(contractData()!.status)">
+                      {{ formatStatus(contractData()!.status) }}
+                    </span>
+                  } @else if (requestData()) {
                     <span [class]="getStatusBadgeClass(requestData()!.status)">
                       {{ formatStatus(requestData()!.status) }}
                     </span>
@@ -64,6 +72,18 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
                   }
                 </dd>
               </div>
+              @if (contractData()?.committedVinMasked) {
+                <div>
+                  <dt class="text-sm text-slate-500">Committed VIN</dt>
+                  <dd class="font-mono text-slate-900">{{ contractData()!.committedVinMasked }}</dd>
+                </div>
+              }
+              @if (contractData()?.committedAt) {
+                <div>
+                  <dt class="text-sm text-slate-500">Committed At</dt>
+                  <dd class="text-slate-900">{{ contractData()!.committedAt | date:'medium' }}</dd>
+                </div>
+              }
             </dl>
           </div>
 
@@ -101,10 +121,12 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
                     }
                   </dd>
                 </div>
-                <div>
-                  <dt class="text-sm text-slate-500">Last Updated</dt>
-                  <dd class="text-slate-900">{{ requestData()!.lastUpdatedAt | date:'medium' }}</dd>
-                </div>
+                @if (requestData()!.lastDependencyError) {
+                  <div>
+                    <dt class="text-sm text-slate-500">Last Error</dt>
+                    <dd class="text-sm text-red-600">{{ requestData()!.lastDependencyError }}</dd>
+                  </div>
+                }
               </dl>
             </div>
           }
@@ -143,13 +165,14 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
 })
 export class ContractDetailComponent implements OnInit {
   private readonly adminService = inject(AdminService);
-  private readonly vinService = inject(VinService);
+  private readonly destroyRef = inject(DestroyRef);
 
   contractContextId = input.required<string>();
 
   readonly isLoading = signal(true);
   readonly errorMessage = signal<string | null>(null);
-  readonly requestData = signal<VinRequestStatusData | null>(null);
+  readonly contractData = signal<AdminContractDetailData | null>(null);
+  readonly requestData = signal<AdminRequestDetailData | null>(null);
 
   ngOnInit(): void {
     this.loadData();
@@ -167,11 +190,39 @@ export class ContractDetailComponent implements OnInit {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
-    // For demo, we'll try to get request data
-    // In a real app, this would fetch by contract context ID
-    // Here we simulate by trying to get status if we have a request ID
-    // This is a placeholder - the admin API should support contract lookup
-    this.isLoading.set(false);
+    this.adminService
+      .getContractDetail(this.contractContextId())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          if (response.success && response.data) {
+            this.contractData.set(response.data);
+            if (response.data.requests.length > 0) {
+              this.loadRequestData(response.data.requests[0].requestId);
+            }
+          }
+          this.isLoading.set(false);
+        },
+        error: (err) => {
+          this.errorMessage.set(
+            err?.error?.error?.message || 'Failed to load contract details.'
+          );
+          this.isLoading.set(false);
+        },
+      });
+  }
+
+  private loadRequestData(requestId: string): void {
+    this.adminService
+      .getRequestDetail(requestId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          if (response.success && response.data) {
+            this.requestData.set(response.data);
+          }
+        },
+      });
   }
 
   readonly formatStatus = formatStatus;

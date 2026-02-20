@@ -56,6 +56,15 @@ export class AdminService {
   }
 
   /**
+   * Get detailed information about a contract including its requests
+   * @param contractContextId Contract context ID
+   * @returns Observable with contract details and request list
+   */
+  getContractDetail(contractContextId: string): Observable<ApiEnvelope<AdminContractDetailData>> {
+    return this.api.get<AdminContractDetailData>(`/admin/contracts/${contractContextId}`);
+  }
+
+  /**
    * Get detailed information about a request
    * @param requestId Request ID
    * @returns Observable with request details including audit trail

@@ -1,28 +1,67 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { of, throwError } from 'rxjs';
 import { ContractDetailComponent } from './contract-detail.component';
 import { AdminService } from '@core/services/admin.service';
-import { VinService } from '@core/services/vin.service';
 import { VinAddStatus } from '@core/models';
 
 describe('ContractDetailComponent', () => {
   let component: ContractDetailComponent;
   let fixture: ComponentFixture<ContractDetailComponent>;
   let adminServiceMock: Record<string, jest.Mock>;
-  let vinServiceMock: Record<string, jest.Mock>;
+
+  const mockContractDetailResponse = {
+    correlationId: 'corr-1',
+    success: true,
+    data: {
+      contractContextId: 'ctx-test-001',
+      externalContractId: 'EXT-001',
+      status: VinAddStatus.NOT_USED,
+      committedVinMasked: null,
+      committedAt: null,
+      requests: [],
+    },
+    error: null,
+  };
+
+  const mockContractDetailWithRequests = {
+    correlationId: 'corr-2',
+    success: true,
+    data: {
+      contractContextId: 'ctx-test-001',
+      externalContractId: 'EXT-001',
+      status: VinAddStatus.COMMITTED_LOCKED,
+      committedVinMasked: '1HG******1234',
+      committedAt: '2026-01-15T10:00:00Z',
+      requests: [
+        { requestId: 'req-001', status: VinAddStatus.COMMITTED_LOCKED, createdAt: '2026-01-15T10:00:00Z' },
+      ],
+    },
+    error: null,
+  };
+
+  const mockRequestDetailResponse = {
+    correlationId: 'corr-3',
+    success: true as const,
+    data: {
+      requestId: 'req-001',
+      contractContextId: 'ctx-test-001',
+      status: VinAddStatus.COMMITTED_LOCKED,
+      vin: '1HGCM82633A123456',
+      decoded: { year: 2003, make: 'Honda', model: 'Accord' },
+      eligibilityAllowed: true,
+      eligibilityReasonCode: 'OK',
+      audit: [],
+    },
+    error: null,
+  };
 
   beforeEach(async () => {
     adminServiceMock = {
       searchContracts: jest.fn(),
-      getRequestDetail: jest.fn(),
+      getContractDetail: jest.fn().mockReturnValue(of(mockContractDetailResponse)),
+      getRequestDetail: jest.fn().mockReturnValue(of(mockRequestDetailResponse)),
       addNote: jest.fn(),
-    };
-
-    vinServiceMock = {
-      decode: jest.fn(),
-      checkEligibility: jest.fn(),
-      commit: jest.fn(),
-      getStatus: jest.fn(),
     };
 
     await TestBed.configureTestingModule({
@@ -30,7 +69,6 @@ describe('ContractDetailComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AdminService, useValue: adminServiceMock },
-        { provide: VinService, useValue: vinServiceMock },
       ],
     }).compileComponents();
 
@@ -72,18 +110,25 @@ describe('ContractDetailComponent', () => {
     expect(contractInfoHeading).toBeTruthy();
   });
 
-  it('should show Unknown status badge when no request data is loaded', () => {
-    expect(component.requestData()).toBeNull();
+  it('should call getContractDetail on init', () => {
+    expect(adminServiceMock.getContractDetail).toHaveBeenCalledWith('ctx-test-001');
+  });
 
-    const badges = fixture.nativeElement.querySelectorAll('span');
-    const unknownBadge = Array.from<HTMLElement>(badges).find((s) =>
-      s.textContent?.includes('Unknown')
-    );
-    expect(unknownBadge).toBeTruthy();
+  it('should set contractData from the API response', () => {
+    expect(component.contractData()).toEqual(mockContractDetailResponse.data);
+  });
+
+  it('should show status from contractData', () => {
+    const content = fixture.nativeElement.textContent;
+    expect(content).toContain('Not Used');
+  });
+
+  it('should show external contract ID from contractData', () => {
+    const content = fixture.nativeElement.textContent;
+    expect(content).toContain('EXT-001');
   });
 
   it('should not be in loading state after initial load', () => {
-    // The loadData() method sets isLoading to false synchronously in the current implementation
     expect(component.isLoading()).toBe(false);
   });
 
@@ -100,13 +145,9 @@ describe('ContractDetailComponent', () => {
   });
 
   it('should call loadData when refresh is invoked', () => {
-    // loadData is private, but calling refresh calls it
-    // We can verify the side effect: isLoading should momentarily be set then cleared
+    adminServiceMock.getContractDetail.mockClear();
     component.refresh();
-    fixture.detectChanges();
-
-    // After refresh, isLoading should be false (synchronous loadData)
-    expect(component.isLoading()).toBe(false);
+    expect(adminServiceMock.getContractDetail).toHaveBeenCalledWith('ctx-test-001');
   });
 
   it('should clear error message via clearError', () => {
@@ -125,14 +166,17 @@ describe('ContractDetailComponent', () => {
     expect(vinRequestHeading).toBeFalsy();
   });
 
+  it('should load request detail when contract has requests', () => {
+    adminServiceMock.getContractDetail.mockReturnValue(of(mockContractDetailWithRequests));
+    component.refresh();
+    fixture.detectChanges();
+
+    expect(adminServiceMock.getRequestDetail).toHaveBeenCalledWith('req-001');
+  });
+
   it('should show VIN Add Request card when requestData is set', () => {
-    component.requestData.set({
-      requestId: 'req-001',
-      status: VinAddStatus.PENDING,
-      vin: '1HGCM82633A123456',
-      lastUpdatedAt: '2026-01-15T10:00:00Z',
-      eligibilityAllowed: true,
-    });
+    adminServiceMock.getContractDetail.mockReturnValue(of(mockContractDetailWithRequests));
+    component.refresh();
     fixture.detectChanges();
 
     const headings = fixture.nativeElement.querySelectorAll('h2');
@@ -147,13 +191,8 @@ describe('ContractDetailComponent', () => {
   });
 
   it('should show Eligible badge when eligibilityAllowed is true', () => {
-    component.requestData.set({
-      requestId: 'req-001',
-      status: VinAddStatus.PENDING,
-      vin: '1HGCM82633A123456',
-      lastUpdatedAt: '2026-01-15T10:00:00Z',
-      eligibilityAllowed: true,
-    });
+    adminServiceMock.getContractDetail.mockReturnValue(of(mockContractDetailWithRequests));
+    component.refresh();
     fixture.detectChanges();
 
     const badges = fixture.nativeElement.querySelectorAll('.badge-success');
@@ -164,12 +203,8 @@ describe('ContractDetailComponent', () => {
   });
 
   it('should show View Full Request Details link when requestData is present', () => {
-    component.requestData.set({
-      requestId: 'req-001',
-      status: VinAddStatus.PENDING,
-      vin: '1HGCM82633A123456',
-      lastUpdatedAt: '2026-01-15T10:00:00Z',
-    });
+    adminServiceMock.getContractDetail.mockReturnValue(of(mockContractDetailWithRequests));
+    component.refresh();
     fixture.detectChanges();
 
     const links = fixture.nativeElement.querySelectorAll('a');
@@ -178,5 +213,34 @@ describe('ContractDetailComponent', () => {
     );
     expect(detailLink).toBeTruthy();
     expect(detailLink!.getAttribute('href')).toBe('/admin/request/req-001');
+  });
+
+  it('should set error message when API call fails', () => {
+    const errorResponse = {
+      error: { error: { message: 'Contract not found.' } },
+    };
+    adminServiceMock.getContractDetail.mockReturnValue(throwError(() => errorResponse));
+    component.refresh();
+    fixture.detectChanges();
+
+    expect(component.errorMessage()).toBe('Contract not found.');
+    expect(component.isLoading()).toBe(false);
+  });
+
+  it('should show default error message when error has no message', () => {
+    adminServiceMock.getContractDetail.mockReturnValue(throwError(() => ({})));
+    component.refresh();
+    fixture.detectChanges();
+
+    expect(component.errorMessage()).toBe('Failed to load contract details.');
+  });
+
+  it('should show committed VIN when contractData has it', () => {
+    adminServiceMock.getContractDetail.mockReturnValue(of(mockContractDetailWithRequests));
+    component.refresh();
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.textContent;
+    expect(content).toContain('1HG******1234');
   });
 });

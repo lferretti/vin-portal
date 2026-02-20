@@ -99,8 +99,16 @@ export const mockInterceptor: HttpInterceptorFn = (req, next) => {
       .pipe(switchMap((response) => toHttpResult(response, url)));
   }
 
-  // Admin endpoints
-  if (url.includes('/admin/contracts') && method === 'GET') {
+  // Admin contract detail by ID
+  if (url.match(/\/admin\/contracts\/[\w-]+$/) && method === 'GET') {
+    const contractContextId = url.split('/').pop() || '';
+    return mockApi
+      .getContractDetail(contractContextId)
+      .pipe(switchMap((response) => toHttpResult(response, url)));
+  }
+
+  // Admin search (with query params, no path segment after /contracts)
+  if (url.includes('/admin/contracts') && !url.match(/\/admin\/contracts\/[\w-]+/) && method === 'GET') {
     const urlObj = new URL(url, window.location.origin);
     return mockApi
       .searchContracts({

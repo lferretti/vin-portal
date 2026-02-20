@@ -4,9 +4,11 @@ import { ApiService } from './api.service';
 import {
   ApiEnvelope,
   AdminContractSearchData,
+  AdminContractDetailData,
   AdminRequestDetailData,
   AdminNoteRequest,
   AdminNoteResponseData,
+  AdminLoginResponseData,
 } from '@core/models';
 
 /**
@@ -15,6 +17,15 @@ import {
 @Injectable({ providedIn: 'root' })
 export class AdminService {
   private readonly api = inject(ApiService);
+
+  /**
+   * Dev login with a selected role (mock mode only)
+   * @param role Admin role to log in as
+   * @returns Observable with login response including JWT token
+   */
+  devLogin(role: 'admin' | 'support'): Observable<ApiEnvelope<AdminLoginResponseData>> {
+    return this.api.post<AdminLoginResponseData>('/admin/auth/dev-login', { role });
+  }
 
   /**
    * Search for contracts

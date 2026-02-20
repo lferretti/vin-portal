@@ -1,15 +1,25 @@
 import { Routes } from '@angular/router';
 import { AdminLayoutComponent } from './layout/admin-layout.component';
-import { authGuard } from '@core/guards';
+import { adminAuthGuard } from '@core/guards';
 
 /**
- * Admin portal routes with layout wrapper
+ * Admin portal routes with layout wrapper.
+ * /admin/login is unguarded (public login page).
+ * All other /admin routes require admin authentication.
  */
 export const adminRoutes: Routes = [
   {
+    path: 'login',
+    loadComponent: () =>
+      import('./pages/admin-login/admin-login.component').then(
+        (m) => m.AdminLoginComponent
+      ),
+    title: 'Admin Login - VIN Portal',
+  },
+  {
     path: '',
     component: AdminLayoutComponent,
-    canActivate: [authGuard],
+    canActivate: [adminAuthGuard],
     children: [
       {
         path: '',

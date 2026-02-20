@@ -1,5 +1,5 @@
-import { Injectable, signal, computed } from '@angular/core';
-import { Observable, of, delay, throwError, timer, map } from 'rxjs';
+import { Injectable, signal } from '@angular/core';
+import { Observable, of, delay, timer, map } from 'rxjs';
 import {
   ApiEnvelope,
   ApiErrorCodes,
@@ -16,7 +16,6 @@ import {
   AdminRequestDetailData,
   AdminNoteResponseData,
   AdminLoginResponseData,
-  ContractSummary,
   VinDecoded,
 } from '@core/models';
 
@@ -561,7 +560,7 @@ export class MockApiService {
     );
   }
 
-  addNote(requestId: string, note: string): Observable<ApiEnvelope<AdminNoteResponseData>> {
+  addNote(requestId: string, _note: string): Observable<ApiEnvelope<AdminNoteResponseData>> {
     return of(null).pipe(
       delay(this.randomDelay(200, 500)),
       map(() => {
@@ -613,7 +612,7 @@ export class MockApiService {
 
   emailDocument(
     requestId: string,
-    email: string
+    _email: string
   ): Observable<ApiEnvelope<{ requestId: string; sent: boolean }>> {
     return of(null).pipe(
       delay(this.randomDelay(500, 1200)),

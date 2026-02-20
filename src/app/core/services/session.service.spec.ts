@@ -208,9 +208,6 @@ describe('SessionService', () => {
       };
       sessionStorage.setItem('vin_portal_session', JSON.stringify(storedSession));
 
-      // Create new service instance
-      const newService = TestBed.inject(SessionService);
-
       // Force reload by creating through TestBed reset
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({});

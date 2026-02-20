@@ -88,12 +88,12 @@ import { AdminSessionService } from '@core/services';
           </ul>
         </nav>
 
-        <div class="px-4 py-4 border-t border-slate-700">
+        <div class="border-t border-slate-700 px-4 py-4">
           @if (displayName()) {
             <div class="mb-3">
               <div class="text-sm font-medium text-slate-200">{{ displayName() }}</div>
               <div class="text-xs text-slate-400">{{ email() }}</div>
-              <span class="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium"
+              <span class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                 [class]="role() === 'admin' ? 'bg-purple-900 text-purple-200' : 'bg-blue-900 text-blue-200'">
                 {{ role() === 'admin' ? 'Security / Admin' : 'Support' }}
               </span>
@@ -101,11 +101,11 @@ import { AdminSessionService } from '@core/services';
           }
           <button
             (click)="logout()"
-            class="w-full text-left text-sm text-slate-400 hover:text-white transition-colors"
+            class="w-full text-left text-sm text-slate-400 transition-colors hover:text-white"
           >
             Sign Out
           </button>
-          <a routerLink="/" class="block mt-2 text-sm text-slate-400 hover:text-white transition-colors">
+          <a routerLink="/" class="mt-2 block text-sm text-slate-400 transition-colors hover:text-white">
             Back to Consumer Portal
           </a>
         </div>

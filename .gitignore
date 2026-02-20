@@ -54,6 +54,9 @@ backend/coverage/
 # Worktrees
 .worktrees/
 
+# Debug screenshots
+debug-*.png
+
 # System files
 .DS_Store
 Thumbs.db

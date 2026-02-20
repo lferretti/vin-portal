@@ -196,7 +196,7 @@ describe('ErrorToastComponent', () => {
       testCases.forEach(({ type, expected }) => {
         const notification = { id: 1, message: 'test', type, timestamp: Date.now() };
         // Access the protected method via bracket notation for testing
-        const classes = (component as unknown as Record<string, Function>)['toastClasses'](
+        const classes = (component as unknown as Record<string, (...args: unknown[]) => unknown>)['toastClasses'](
           notification
         );
         expect(classes).toBe(expected);
@@ -214,7 +214,7 @@ describe('ErrorToastComponent', () => {
 
       testCases.forEach(({ type, expected }) => {
         const notification = { id: 1, message: 'test', type, timestamp: Date.now() };
-        const icon = (component as unknown as Record<string, Function>)['icon'](notification);
+        const icon = (component as unknown as Record<string, (...args: unknown[]) => unknown>)['icon'](notification);
         expect(icon).toBe(expected);
       });
     });

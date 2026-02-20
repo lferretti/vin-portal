@@ -89,7 +89,7 @@ describe('ContractSearchComponent', () => {
     component.searchForm.patchValue({ contractNumber: 'CONTRACT-001' });
     expect(component.hasSearchCriteria()).toBe(true);
 
-    const button = fixture.nativeElement.querySelector('button[type="submit"]');
+    fixture.nativeElement.querySelector('button[type="submit"]');
     // Verify the component method returns true (button disabled state may not
     // reflect in DOM without a template event due to OnPush, so test the logic)
     expect(component.isSearching() || !component.hasSearchCriteria()).toBe(false);

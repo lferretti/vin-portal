@@ -77,7 +77,7 @@ describe('IdempotencyService', () => {
     });
 
     it('should not affect other keys', () => {
-      const key1 = service.getOrCreateKey('operation-1');
+      service.getOrCreateKey('operation-1');
       const key2 = service.getOrCreateKey('operation-2');
 
       service.clearKey('operation-1');

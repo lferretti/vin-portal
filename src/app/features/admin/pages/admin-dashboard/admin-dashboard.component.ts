@@ -107,34 +107,34 @@ import { RouterLink } from '@angular/router';
         </div>
 
         <div class="card">
-          <h2 class="text-lg font-semibold text-slate-900 mb-4">Status Reference</h2>
+          <h2 class="mb-4 text-lg font-semibold text-slate-900">Status Reference</h2>
           <div class="space-y-3">
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 shrink-0">NOT_USED</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">NOT_USED</span>
               <span class="text-sm text-slate-600">Contract authenticated, no VIN commit started.</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 shrink-0">PENDING</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">PENDING</span>
               <span class="text-sm text-slate-600">VIN commit accepted, awaiting dependency confirmation.</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 shrink-0">COMMITTED_LOCKED</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">COMMITTED_LOCKED</span>
               <span class="text-sm text-slate-600">VIN committed successfully. Contract permanently locked.</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 shrink-0">FAILED_INELIGIBLE</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">FAILED_INELIGIBLE</span>
               <span class="text-sm text-slate-600">Eligibility rules denied the VIN (e.g., vehicle class too high).</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 shrink-0">FAILED_DEPENDENCY</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">FAILED_DEPENDENCY</span>
               <span class="text-sm text-slate-600">External dependency unreachable after all retries.</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 shrink-0">FAILED_VALIDATION</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">FAILED_VALIDATION</span>
               <span class="text-sm text-slate-600">VIN failed format or decode validation.</span>
             </div>
             <div class="flex items-start gap-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 shrink-0">CANCELLED</span>
+              <span class="inline-flex shrink-0 items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">CANCELLED</span>
               <span class="text-sm text-slate-600">Manually cancelled (not used in standard consumer flow).</span>
             </div>
           </div>

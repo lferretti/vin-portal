@@ -36,6 +36,10 @@ module.exports = tseslint.config(
         },
       ],
       "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "no-console": "error",
       "local/no-form-input-modifier": "error",
       "tailwindcss/classnames-order": "warn",

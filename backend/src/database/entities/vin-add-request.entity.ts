@@ -58,6 +58,9 @@ export class VinAddRequest {
   @Column({ name: 'last_dependency_error', type: 'text', nullable: true })
   lastDependencyError: string | null;
 
+  @Column({ name: 'email_status', type: 'varchar', length: 32, nullable: true })
+  emailStatus?: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

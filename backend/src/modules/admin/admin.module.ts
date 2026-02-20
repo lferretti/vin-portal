@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ContractContext } from '../../database/entities/contract-context.entity';
 import { VinAddRequest } from '../../database/entities/vin-add-request.entity';
 import { AuditEvent } from '../../database/entities/audit-event.entity';
+import { AdminUser } from '../../database/entities/admin-user.entity';
 import { AdminController } from './admin.controller';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminService } from './admin.service';
@@ -11,7 +12,7 @@ import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ContractContext, VinAddRequest, AuditEvent]),
+    TypeOrmModule.forFeature([ContractContext, VinAddRequest, AuditEvent, AdminUser]),
     AuthModule,
     AuditModule,
   ],

@@ -14,6 +14,7 @@ import {
   AdminContractSearchData,
   AdminRequestDetailData,
   AdminNoteResponseData,
+  AdminLoginResponseData,
   ContractSummary,
   VinDecoded,
 } from '@core/models';
@@ -412,6 +413,37 @@ export class MockApiService {
     );
   }
 
+  // ============== Admin Auth ==============
+
+  devLogin(role: string): Observable<ApiEnvelope<AdminLoginResponseData>> {
+    return of(null).pipe(
+      delay(this.randomDelay(200, 500)),
+      map(() => {
+        const isAdmin = role === 'admin';
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const payload = btoa(
+          JSON.stringify({
+            adminUserId: isAdmin ? 'admin-001' : 'support-001',
+            email: isAdmin ? 'admin@example.com' : 'support@example.com',
+            role,
+            iat: Math.floor(Date.now() / 1000),
+            exp: Math.floor(Date.now() / 1000) + 60 * 60,
+          })
+        );
+        const signature = btoa('mock-admin-signature');
+        const token = `${header}.${payload}.${signature}`;
+
+        return this.successResponse<AdminLoginResponseData>({
+          token,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          email: isAdmin ? 'admin@example.com' : 'support@example.com',
+          role,
+          displayName: isAdmin ? 'Dev Admin' : 'Dev Support',
+        });
+      })
+    );
+  }
+
   // ============== Admin Operations ==============
 
   searchContracts(params: {
@@ -429,6 +461,12 @@ export class MockApiService {
             }
             if (params.externalContractId && c.externalContractId !== params.externalContractId) {
               return false;
+            }
+            if (params.requestId) {
+              const hasMatchingRequest = Array.from(this._requests().values()).some(
+                (r) => r.id === params.requestId && r.contractContextId === c.id
+              );
+              if (!hasMatchingRequest) return false;
             }
             return true;
           })
@@ -542,7 +580,6 @@ export class MockApiService {
     return of(null).pipe(
       delay(this.randomDelay(500, 1200)),
       map(() => {
-        console.log(`[MockAPI] Document for request ${requestId} emailed to ${email}`);
         return this.successResponse({ requestId, sent: true });
       })
     );

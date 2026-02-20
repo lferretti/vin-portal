@@ -92,6 +92,13 @@ export const mockInterceptor: HttpInterceptorFn = (req, next) => {
       .pipe(switchMap((response) => toHttpResult(response, url)));
   }
 
+  // Admin auth
+  if (url.includes('/admin/auth/dev-login') && method === 'POST') {
+    return mockApi
+      .devLogin(body['role'] as string)
+      .pipe(switchMap((response) => toHttpResult(response, url)));
+  }
+
   // Admin endpoints
   if (url.includes('/admin/contracts') && method === 'GET') {
     const urlObj = new URL(url, window.location.origin);

@@ -6,6 +6,7 @@ import { CommitService } from './commit.service';
 import { ContractContext } from '../../database/entities/contract-context.entity';
 import { VinAddRequest } from '../../database/entities/vin-add-request.entity';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import { VIN_DECODE_ADAPTER, ELIGIBILITY_ADAPTER } from '../../adapters/adapter.tokens';
 import { VinAddStatus } from '../../common/enums/vin-add-status.enum';
 import { ErrorCodes } from '../../common/constants/error-codes';
@@ -111,6 +112,18 @@ describe('CommitService', () => {
         { provide: ELIGIBILITY_ADAPTER, useValue: eligibilityAdapter },
         { provide: AuditService, useValue: auditService },
         { provide: DataSource, useValue: dataSource },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            trackAuthAttempt: jest.fn(),
+            trackOtpVerify: jest.fn(),
+            trackEligibilityCheck: jest.fn(),
+            trackVinCommit: jest.fn(),
+            trackWorkerRetry: jest.fn(),
+            trackDocumentDownload: jest.fn(),
+            trackDocumentEmail: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

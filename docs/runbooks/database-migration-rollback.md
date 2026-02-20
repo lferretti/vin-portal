@@ -1,7 +1,7 @@
 # Database Migration Rollback Runbook
 
 **Owner team:** Warranty Digital Products
-**Last updated:** 2026-02-18
+**Last updated:** 2026-02-20
 
 ---
 
@@ -296,6 +296,153 @@ aws rds restore-db-instance-to-point-in-time \
 2. After confirming the restored instance is stable, delete the old instance (or create a final snapshot first).
 3. Update any DNS CNAME records if applicable.
 4. Document the recovery in the incident post-mortem.
+
+---
+
+## 8. Migration Pattern Rollback Reference
+
+This section documents the expected `down()` logic for each common migration pattern. Use it when writing or verifying `down()` methods, or when performing manual SQL rollbacks.
+
+### 8.1 Add Column
+
+**`up()` example:**
+
+```sql
+ALTER TABLE "vin_add_request" ADD COLUMN "email_status" varchar(16);
+```
+
+**`down()` logic:**
+
+```sql
+ALTER TABLE "vin_add_request" DROP COLUMN IF EXISTS "email_status";
+```
+
+**Data impact:** Any data stored in the column is permanently lost on rollback. If the column has been populated in production, export the data before reverting:
+
+```sql
+-- Export before rollback
+COPY (SELECT id, email_status FROM vin_add_request WHERE email_status IS NOT NULL)
+TO '/tmp/email_status_backup.csv' WITH CSV HEADER;
+```
+
+### 8.2 Add Table
+
+**`up()` example:**
+
+```sql
+CREATE TABLE "new_table" (
+  "id" uuid NOT NULL DEFAULT gen_random_uuid(),
+  "name" varchar(128) NOT NULL,
+  CONSTRAINT "PK_new_table" PRIMARY KEY ("id")
+);
+```
+
+**`down()` logic:**
+
+```sql
+DROP TABLE IF EXISTS "new_table" CASCADE;
+```
+
+**Data impact:** All rows in the table are permanently lost. Foreign keys referencing this table (with `CASCADE`) will also be dropped. Verify dependent tables before running.
+
+### 8.3 Alter Column (type change or constraint)
+
+**`up()` example:**
+
+```sql
+ALTER TABLE "vin_add_request" ALTER COLUMN "retry_count" TYPE bigint;
+```
+
+**`down()` logic:**
+
+```sql
+ALTER TABLE "vin_add_request" ALTER COLUMN "retry_count" TYPE int;
+```
+
+**Data impact:** Type narrowing (e.g., `bigint` back to `int`) may fail if existing values exceed the target type's range. Check data ranges before reverting:
+
+```sql
+SELECT MAX(retry_count), MIN(retry_count) FROM vin_add_request;
+```
+
+### 8.4 Drop Column
+
+**`up()` example:**
+
+```sql
+ALTER TABLE "contract_context" DROP COLUMN "deprecated_field";
+```
+
+**`down()` logic:**
+
+```sql
+ALTER TABLE "contract_context" ADD COLUMN "deprecated_field" varchar(128);
+```
+
+**Data impact:** The column is restored empty (all NULLs). The original data **cannot** be recovered from the `down()` method alone. If the data is needed, restore from a database backup or snapshot.
+
+---
+
+## 9. Specific Migration: `email_status` Column (Phase 3.4)
+
+This section documents the rollback procedure for the `email_status` column added to `vin_add_request` as part of the email/document integration (Phase 3.4).
+
+### 9.1 Migration overview
+
+| Detail | Value |
+|--------|-------|
+| **Table** | `vin_add_request` |
+| **Column** | `email_status` |
+| **Type** | `varchar(16)`, nullable |
+| **Valid values** | `sent`, `failed`, `bounced`, `NULL` (not yet emailed) |
+| **Purpose** | Tracks whether the confirmation email was successfully delivered for a given VIN add request |
+| **Backend code dependency** | `DocumentService.emailDocument()` writes this column on SES send success/failure; worker retries on `failed` status |
+
+### 9.2 Pre-rollback considerations
+
+- **Is the backend being rolled back too?** If rolling back to a backend version that predates the `email_status` column, the backend code will not reference this column and the rollback is safe.
+- **Is the backend staying on the current version?** If the backend code still references `email_status`, dropping the column will cause runtime errors. Roll back the backend code first or deploy a version that does not depend on the column.
+- **Data preservation:** If email tracking data is needed for auditing, export it before rolling back:
+
+```sql
+COPY (
+  SELECT id, vin, status, email_status, updated_at
+  FROM vin_add_request
+  WHERE email_status IS NOT NULL
+) TO '/tmp/email_status_export.csv' WITH CSV HEADER;
+```
+
+### 9.3 Rollback steps
+
+1. Follow the standard pre-rollback checklist (Section 3).
+2. Verify the `email_status` column exists:
+   ```sql
+   SELECT column_name, data_type, is_nullable
+   FROM information_schema.columns
+   WHERE table_name = 'vin_add_request' AND column_name = 'email_status';
+   ```
+3. Run `npm run migration:revert` from the `backend/` directory (see Section 4 for per-environment instructions).
+4. Verify the column has been removed:
+   ```sql
+   SELECT column_name FROM information_schema.columns
+   WHERE table_name = 'vin_add_request' AND column_name = 'email_status';
+   -- Expected: 0 rows
+   ```
+5. If the backend code that references `email_status` is still deployed, roll back the ECS service to the previous task definition (see Section 4.3, step 7).
+6. Verify application health (Section 5).
+
+### 9.4 Manual rollback (if `down()` is unavailable)
+
+```sql
+ALTER TABLE "vin_add_request" DROP COLUMN IF EXISTS "email_status";
+DELETE FROM migrations WHERE name LIKE '%EmailStatus%';
+```
+
+After manual rollback, verify TypeORM migration state:
+
+```sql
+SELECT * FROM migrations ORDER BY id DESC LIMIT 5;
+```
 
 ---
 

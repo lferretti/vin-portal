@@ -26,6 +26,14 @@ export class RumService {
     this.initialized = true;
   }
 
+  addAction(name: string, context?: Record<string, unknown>): void {
+    if (!this.initialized || !environment.datadog.enabled) {
+      return;
+    }
+
+    datadogRum.addAction(name, context);
+  }
+
   addError(error: unknown): void {
     if (!this.initialized || !environment.datadog.enabled) {
       return;

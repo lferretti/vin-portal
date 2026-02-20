@@ -7,6 +7,7 @@ import { interval, takeWhile } from 'rxjs';
 
 import { OtpService } from '@core/services/otp.service';
 import { SessionService } from '@core/services/session.service';
+import { RumService } from '@core/services';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import {
   HeaderComponent,
@@ -99,11 +100,13 @@ import type { StepConfig } from '@shared/components';
               <button
                 type="submit"
                 class="bg-primary-600 hover:bg-primary-700 inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                [disabled]="codeControl.invalid || isVerifying()"
+                [disabled]="codeControl.invalid || isVerifying() || rateLimitCooldown() > 0"
               >
                 @if (isVerifying()) {
                   <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                   Verifying...
+                } @else if (rateLimitCooldown() > 0) {
+                  Wait {{ rateLimitCooldown() }}s
                 } @else {
                   Verify Code
                 }
@@ -145,6 +148,7 @@ export class VerifyOtpComponent implements OnInit {
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly rumService = inject(RumService);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -158,6 +162,8 @@ export class VerifyOtpComponent implements OnInit {
   readonly errorMessage = signal<string | null>(null);
   readonly successMessage = signal<string | null>(null);
   readonly resendCooldown = signal(0);
+  readonly rateLimitCooldown = signal(0);
+  private cooldownInterval: ReturnType<typeof setInterval> | null = null;
 
   readonly maskedDestination = this.consumerState.otpMaskedDestination;
 
@@ -189,6 +195,7 @@ export class VerifyOtpComponent implements OnInit {
 
     this.isVerifying.set(true);
     this.errorMessage.set(null);
+    this.rumService.addAction('otp_verify_submit');
 
     this.otpService
       .verify({
@@ -201,6 +208,8 @@ export class VerifyOtpComponent implements OnInit {
           this.isVerifying.set(false);
 
           if (response.success && response.data) {
+            this.rumService.addAction('otp_verify_success');
+
             // Update session with new token
             this.sessionService.setSession({
               ...response.data,
@@ -266,6 +275,7 @@ export class VerifyOtpComponent implements OnInit {
 
   private handleError(err: HttpErrorResponse): void {
     const apiError = err.error?.error;
+    this.rumService.addAction('otp_verify_error', { code: apiError?.code });
 
     switch (apiError?.code) {
       case 'OTP_INVALID':
@@ -279,12 +289,28 @@ export class VerifyOtpComponent implements OnInit {
           'Too many failed attempts. Please wait before trying again or contact support.'
         );
         break;
-      case 'RATE_LIMITED':
-        this.errorMessage.set('Please wait before requesting another code.');
+      case 'RATE_LIMITED': {
+        const retryAfter = (err as HttpErrorResponse & { retryAfterSeconds?: number }).retryAfterSeconds;
+        const seconds = retryAfter ?? 60;
+        this.startCooldown(seconds);
+        this.errorMessage.set(`Too many attempts. Please wait ${seconds} seconds.`);
         break;
+      }
       default:
         this.errorMessage.set('An error occurred. Please try again.');
     }
+  }
+
+  private startCooldown(seconds: number): void {
+    this.rateLimitCooldown.set(seconds);
+    if (this.cooldownInterval) clearInterval(this.cooldownInterval);
+    this.cooldownInterval = setInterval(() => {
+      this.rateLimitCooldown.update(c => c - 1);
+      if (this.rateLimitCooldown() <= 0 && this.cooldownInterval) {
+        clearInterval(this.cooldownInterval);
+        this.cooldownInterval = null;
+      }
+    }, 1000);
   }
 }
 

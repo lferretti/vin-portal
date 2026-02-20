@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { CONTRACT_VERIFICATION_ADAPTER } from '../../adapters/adapter.tokens';
 import { VinAddStatus } from '../../common/enums/vin-add-status.enum';
 import { ErrorCodes } from '../../common/constants/error-codes';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import { AuthenticateContractDto } from './dto/authenticate-contract.dto';
 
 describe('ContractService', () => {
@@ -87,6 +88,18 @@ describe('ContractService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => configMap[key]),
+          },
+        },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            trackAuthAttempt: jest.fn(),
+            trackOtpVerify: jest.fn(),
+            trackEligibilityCheck: jest.fn(),
+            trackVinCommit: jest.fn(),
+            trackWorkerRetry: jest.fn(),
+            trackDocumentDownload: jest.fn(),
+            trackDocumentEmail: jest.fn(),
           },
         },
       ],

@@ -1,11 +1,16 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Inject, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SkipThrottle } from '@nestjs/throttler';
+import { CircuitBreakerRegistry } from '../../common/utils/circuit-breaker-registry';
+import { CircuitState } from '../../common/utils/circuit-breaker';
 
 @Controller('health')
 @SkipThrottle()
 export class HealthController {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @Optional() @Inject(CircuitBreakerRegistry) private readonly circuitBreakerRegistry?: CircuitBreakerRegistry,
+  ) {}
 
   @Get()
   async check() {
@@ -18,12 +23,19 @@ export class HealthController {
       checks['database'] = 'error';
     }
 
-    const allHealthy = Object.values(checks).every((v) => v === 'ok');
+    const circuitBreakers = this.circuitBreakerRegistry?.getStates() ?? {};
+
+    const anyCircuitOpen = Object.values(circuitBreakers).some(
+      (state) => state === CircuitState.OPEN,
+    );
+
+    const allHealthy = Object.values(checks).every((v) => v === 'ok') && !anyCircuitOpen;
 
     if (!allHealthy) {
       throw new ServiceUnavailableException({
         status: 'degraded',
         checks,
+        circuitBreakers,
         timestamp: new Date().toISOString(),
       });
     }
@@ -31,6 +43,7 @@ export class HealthController {
     return {
       status: 'ok',
       checks,
+      circuitBreakers,
       timestamp: new Date().toISOString(),
     };
   }

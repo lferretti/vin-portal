@@ -4,6 +4,7 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { VinService } from './vin.service';
 import { VinAddRequest } from '../../database/entities/vin-add-request.entity';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import { VIN_DECODE_ADAPTER, ELIGIBILITY_ADAPTER } from '../../adapters/adapter.tokens';
 import { ErrorCodes } from '../../common/constants/error-codes';
 import { SessionPayload } from '../../common/decorators/current-session.decorator';
@@ -57,6 +58,18 @@ describe('VinService', () => {
         { provide: VIN_DECODE_ADAPTER, useValue: vinDecodeAdapter },
         { provide: ELIGIBILITY_ADAPTER, useValue: eligibilityAdapter },
         { provide: AuditService, useValue: auditService },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            trackAuthAttempt: jest.fn(),
+            trackOtpVerify: jest.fn(),
+            trackEligibilityCheck: jest.fn(),
+            trackVinCommit: jest.fn(),
+            trackWorkerRetry: jest.fn(),
+            trackDocumentDownload: jest.fn(),
+            trackDocumentEmail: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

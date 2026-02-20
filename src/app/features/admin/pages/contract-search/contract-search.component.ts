@@ -93,11 +93,11 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
               <table class="w-full text-sm">
                 <thead>
                   <tr class="border-b border-slate-200">
-                    <th class="px-4 py-3 text-left font-medium text-slate-500">External ID</th>
-                    <th class="px-4 py-3 text-left font-medium text-slate-500">Status</th>
-                    <th class="px-4 py-3 text-left font-medium text-slate-500">Committed VIN</th>
-                    <th class="px-4 py-3 text-left font-medium text-slate-500">Committed At</th>
-                    <th class="px-4 py-3 text-right font-medium text-slate-500">Actions</th>
+                    <th scope="col" class="px-4 py-3 text-left font-medium text-slate-500">External ID</th>
+                    <th scope="col" class="px-4 py-3 text-left font-medium text-slate-500">Status</th>
+                    <th scope="col" class="px-4 py-3 text-left font-medium text-slate-500">Committed VIN</th>
+                    <th scope="col" class="px-4 py-3 text-left font-medium text-slate-500">Committed At</th>
+                    <th scope="col" class="px-4 py-3 text-right font-medium text-slate-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>

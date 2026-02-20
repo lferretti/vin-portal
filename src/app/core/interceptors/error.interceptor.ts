@@ -3,7 +3,6 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, throwError, retry, timer } from 'rxjs';
 import { SessionService } from '../services/session.service';
-import { environment } from '@env';
 
 /**
  * HTTP interceptor for global error handling.
@@ -36,19 +35,13 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         }
       }
 
-      // Handle 429 Rate Limited
+      // Parse Retry-After header on 429 for component consumption
       if (error.status === 429) {
-        // Error is handled by components, but we could add global notification here
-        if (!environment.production) {
-          console.warn('Rate limited:', error.error?.error?.message);
-        }
-      }
-
-      // Handle 503 Service Unavailable
-      if (error.status === 503) {
-        if (!environment.production) {
-          console.error('Service unavailable:', error.error?.error?.message);
-        }
+        const retryAfter = error.headers?.get('Retry-After');
+        const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : null;
+        // Attach parsed value for component consumption
+        (error as HttpErrorResponse & { retryAfterSeconds?: number }).retryAfterSeconds =
+          retrySeconds && !isNaN(retrySeconds) ? retrySeconds : undefined;
       }
 
       return throwError(() => error);

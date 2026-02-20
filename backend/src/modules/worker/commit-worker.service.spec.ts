@@ -6,6 +6,7 @@ import { CommitWorkerService } from './commit-worker.service';
 import { VinAddRequest } from '../../database/entities/vin-add-request.entity';
 import { ContractContext } from '../../database/entities/contract-context.entity';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import { ELIGIBILITY_ADAPTER, ASSOCIATION_ADAPTER } from '../../adapters/adapter.tokens';
 import { VinAddStatus } from '../../common/enums/vin-add-status.enum';
 
@@ -80,6 +81,18 @@ describe('CommitWorkerService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => configMap[key]),
+          },
+        },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            trackAuthAttempt: jest.fn(),
+            trackOtpVerify: jest.fn(),
+            trackEligibilityCheck: jest.fn(),
+            trackVinCommit: jest.fn(),
+            trackWorkerRetry: jest.fn(),
+            trackDocumentDownload: jest.fn(),
+            trackDocumentEmail: jest.fn(),
           },
         },
       ],

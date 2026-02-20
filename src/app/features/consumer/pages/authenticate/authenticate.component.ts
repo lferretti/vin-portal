@@ -6,6 +6,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 
 import { ContractService } from '@core/services/contract.service';
 import { SessionService } from '@core/services/session.service';
+import { RumService } from '@core/services';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import { vinValidator, normalizeVin, zipValidator } from '@shared/validators';
 import {
@@ -108,11 +109,13 @@ import { AuthenticateContractRequest } from '@core/models';
               <button
                 type="submit"
                 class="bg-primary-600 hover:bg-primary-700 inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-3 font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                [disabled]="form.invalid || isLoading()"
+                [disabled]="form.invalid || isLoading() || rateLimitCooldown() > 0"
               >
                 @if (isLoading()) {
                   <div class="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
                   Verifying...
+                } @else if (rateLimitCooldown() > 0) {
+                  Wait {{ rateLimitCooldown() }}s
                 } @else {
                   Continue
                   <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,6 +140,7 @@ export class AuthenticateComponent {
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly rumService = inject(RumService);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -147,6 +151,8 @@ export class AuthenticateComponent {
 
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
+  readonly rateLimitCooldown = signal(0);
+  private cooldownInterval: ReturnType<typeof setInterval> | null = null;
 
   readonly form = new FormGroup({
     vin: new FormControl('', [Validators.required, vinValidator()]),
@@ -168,6 +174,7 @@ export class AuthenticateComponent {
 
     this.isLoading.set(true);
     this.errorMessage.set(null);
+    this.rumService.addAction('auth_form_submit');
 
     const fullVin = normalizeVin(this.form.value.vin!);
     const vin7 = fullVin.slice(-7);
@@ -183,6 +190,8 @@ export class AuthenticateComponent {
         this.isLoading.set(false);
 
         if (response.success && response.data) {
+          this.rumService.addAction('auth_success', { otpRequired: response.data.otp.status === 'REQUIRED' });
+
           // Store session
           this.sessionService.setSession(response.data);
 
@@ -216,6 +225,7 @@ export class AuthenticateComponent {
 
   private handleError(err: HttpErrorResponse): void {
     const apiError = err.error?.error;
+    this.rumService.addAction('auth_error', { code: apiError?.code });
 
     switch (apiError?.code) {
       case 'AUTH_NO_MATCH':
@@ -236,7 +246,9 @@ export class AuthenticateComponent {
         }
         break;
       case 'RATE_LIMITED': {
-        const seconds = (apiError.details?.retryAfterSeconds as number) || 60;
+        const retryAfter = (err as HttpErrorResponse & { retryAfterSeconds?: number }).retryAfterSeconds;
+        const seconds = retryAfter ?? (apiError.details?.retryAfterSeconds as number) ?? 60;
+        this.startCooldown(seconds);
         this.errorMessage.set(`Too many attempts. Please wait ${seconds} seconds and try again.`);
         break;
       }
@@ -250,5 +262,17 @@ export class AuthenticateComponent {
           'An unexpected error occurred. Please try again or contact support.'
         );
     }
+  }
+
+  private startCooldown(seconds: number): void {
+    this.rateLimitCooldown.set(seconds);
+    if (this.cooldownInterval) clearInterval(this.cooldownInterval);
+    this.cooldownInterval = setInterval(() => {
+      this.rateLimitCooldown.update(c => c - 1);
+      if (this.rateLimitCooldown() <= 0 && this.cooldownInterval) {
+        clearInterval(this.cooldownInterval);
+        this.cooldownInterval = null;
+      }
+    }, 1000);
   }
 }

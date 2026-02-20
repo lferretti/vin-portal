@@ -13,6 +13,7 @@ import { ELIGIBILITY_ADAPTER, ASSOCIATION_ADAPTER } from '../../adapters/adapter
 import { EligibilityAdapter } from '../../adapters/interfaces/eligibility.adapter';
 import { AssociationAdapter } from '../../adapters/interfaces/association.adapter';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 
 // Backoff schedule in milliseconds
 const BACKOFF_MS = [60_000, 300_000, 900_000, 3_600_000, 21_600_000];
@@ -35,6 +36,7 @@ export class CommitWorkerService {
     private readonly auditService: AuditService,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {
     this.maxRetries = this.configService.get<number>('app.workerMaxRetries') ?? 5;
     this.enabled = this.configService.get<boolean>('app.workerEnabled') ?? true;
@@ -109,6 +111,8 @@ export class CommitWorkerService {
           requestId: request.id,
           eventData: { reason: 'INELIGIBLE', reasonCode: eligibility.reasonCode },
         });
+
+        this.businessMetrics.trackVinCommit('async', 'failed');
         return;
       }
 
@@ -141,6 +145,8 @@ export class CommitWorkerService {
         eventData: { vin: maskVin(request.vin), decoded: request.decoded },
       });
 
+      this.businessMetrics.trackVinCommit('async', 'committed');
+
       this.logger.log(`Request ${request.id} committed successfully by worker`);
     } catch (error) {
       // Dependency failure — increment retry
@@ -168,6 +174,8 @@ export class CommitWorkerService {
           },
         });
 
+        this.businessMetrics.trackWorkerRetry(request.retryCount, 'failed');
+
         this.logger.warn(`Request ${request.id} failed after ${request.retryCount} retries`);
       } else {
         const backoffIndex = Math.min(request.retryCount - 1, BACKOFF_MS.length - 1);
@@ -184,6 +192,8 @@ export class CommitWorkerService {
             nextRetryAt: request.nextRetryAt.toISOString(),
           },
         });
+
+        this.businessMetrics.trackWorkerRetry(request.retryCount);
       }
     }
   }

@@ -1,8 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { VinDecodeAdapter, VinDecodeResult } from '../interfaces/vin-decode.adapter';
+import { CircuitBreaker } from '../../common/utils/circuit-breaker';
+import { CircuitBreakerRegistry } from '../../common/utils/circuit-breaker-registry';
 
 @Injectable()
 export class VinDecodeStub implements VinDecodeAdapter {
+  private readonly circuitBreaker: CircuitBreaker;
+
+  constructor(registry: CircuitBreakerRegistry) {
+    this.circuitBreaker = registry.register('vin-decode', {
+      failureThreshold: 5,
+      resetTimeoutMs: 30_000,
+    });
+  }
+
   private readonly knownVins: Record<string, VinDecodeResult> = {
     '1HGCM82633A123456': { year: 2003, make: 'Honda', model: 'Accord' },
     '1HGCM56787A123456': { year: 2007, make: 'Honda', model: 'Civic' },
@@ -13,20 +24,22 @@ export class VinDecodeStub implements VinDecodeAdapter {
   };
 
   async decode(vin: string): Promise<VinDecodeResult> {
-    const normalized = vin.toUpperCase();
-    const known = this.knownVins[normalized];
-    if (known) {
-      return known;
-    }
+    return this.circuitBreaker.execute(async () => {
+      const normalized = vin.toUpperCase();
+      const known = this.knownVins[normalized];
+      if (known) {
+        return known;
+      }
 
-    // Generate deterministic decode for unknown VINs
-    const makes = ['Toyota', 'Ford', 'Chevrolet', 'Honda'];
-    const models = ['Sedan', 'SUV', 'Truck', 'Coupe'];
-    const charSum = normalized.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-    return {
-      year: 2020 + (charSum % 5),
-      make: makes[charSum % makes.length],
-      model: models[charSum % models.length],
-    };
+      // Generate deterministic decode for unknown VINs
+      const makes = ['Toyota', 'Ford', 'Chevrolet', 'Honda'];
+      const models = ['Sedan', 'SUV', 'Truck', 'Coupe'];
+      const charSum = normalized.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+      return {
+        year: 2020 + (charSum % 5),
+        make: makes[charSum % makes.length],
+        model: models[charSum % models.length],
+      };
+    });
   }
 }

@@ -23,6 +23,7 @@ import { EligibilityAdapter } from '../../adapters/interfaces/eligibility.adapte
 import { VinCommitDto } from './dto/vin-commit.dto';
 import { SessionPayload } from '../../common/decorators/current-session.decorator';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 
 @Injectable()
 export class CommitService {
@@ -39,6 +40,7 @@ export class CommitService {
     private readonly eligibilityAdapter: EligibilityAdapter,
     private readonly auditService: AuditService,
     private readonly dataSource: DataSource,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   async commit(
@@ -183,6 +185,8 @@ export class CommitService {
           },
         });
 
+        this.businessMetrics.trackVinCommit('sync', 'failed');
+
         throw new HttpException(
           {
             code: ErrorCodes.VIN_INELIGIBLE,
@@ -221,6 +225,8 @@ export class CommitService {
         eventData: { vin: maskVin(vin), decoded },
       });
 
+      this.businessMetrics.trackVinCommit('sync', 'committed');
+
       return {
         requestId: request.id,
         status: VinAddStatus.COMMITTED_LOCKED,
@@ -256,6 +262,8 @@ export class CommitService {
           reason: 'DEPENDENCY_UNAVAILABLE',
         },
       });
+
+      this.businessMetrics.trackVinCommit('sync', 'pending');
 
       return {
         requestId: request.id,

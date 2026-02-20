@@ -18,6 +18,7 @@ import { VinDecodeDto } from './dto/vin-decode.dto';
 import { VinEligibilityDto } from './dto/vin-eligibility.dto';
 import { SessionPayload } from '../../common/decorators/current-session.decorator';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 
 @Injectable()
 export class VinService {
@@ -31,6 +32,7 @@ export class VinService {
     @Inject(ELIGIBILITY_ADAPTER)
     private readonly eligibilityAdapter: EligibilityAdapter,
     private readonly auditService: AuditService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   async decode(
@@ -77,6 +79,11 @@ export class VinService {
       userAgent,
       eventData: { vin, eligible: result.allowed, reasonCode: result.reasonCode },
     });
+
+    this.businessMetrics.trackEligibilityCheck(
+      result.allowed ? 'allowed' : 'denied',
+      result.reasonCode,
+    );
 
     return {
       vin,

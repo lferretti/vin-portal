@@ -9,6 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
 import { OtpStatus } from '../../common/enums/otp-status.enum';
 import { ErrorCodes } from '../../common/constants/error-codes';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import { hashOtpCode } from '../../common/utils/hash.util';
 
 describe('OtpService', () => {
@@ -61,6 +62,18 @@ describe('OtpService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => configMap[key]),
+          },
+        },
+        {
+          provide: BusinessMetricsService,
+          useValue: {
+            trackAuthAttempt: jest.fn(),
+            trackOtpVerify: jest.fn(),
+            trackEligibilityCheck: jest.fn(),
+            trackVinCommit: jest.fn(),
+            trackWorkerRetry: jest.fn(),
+            trackDocumentDownload: jest.fn(),
+            trackDocumentEmail: jest.fn(),
           },
         },
       ],

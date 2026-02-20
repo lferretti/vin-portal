@@ -3,9 +3,20 @@ import {
   ContractVerificationAdapter,
   ContractVerificationResult,
 } from '../interfaces/contract-verification.adapter';
+import { CircuitBreaker } from '../../common/utils/circuit-breaker';
+import { CircuitBreakerRegistry } from '../../common/utils/circuit-breaker-registry';
 
 @Injectable()
 export class ContractVerificationStub implements ContractVerificationAdapter {
+  private readonly circuitBreaker: CircuitBreaker;
+
+  constructor(registry: CircuitBreakerRegistry) {
+    this.circuitBreaker = registry.register('contract-verification', {
+      failureThreshold: 5,
+      resetTimeoutMs: 30_000,
+    });
+  }
+
   private readonly validCredentials: Record<
     string,
     { lastName: string; zip: string; requiresOtp: boolean; hasAdditionalVin: boolean; primaryVinMasked: string }
@@ -45,25 +56,27 @@ export class ContractVerificationStub implements ContractVerificationAdapter {
     lastName: string,
     zip: string,
   ): Promise<ContractVerificationResult> {
-    const key = vin7.toUpperCase();
-    const expected = this.validCredentials[key];
+    return this.circuitBreaker.execute(async () => {
+      const key = vin7.toUpperCase();
+      const expected = this.validCredentials[key];
 
-    if (!expected) {
-      return { matched: false };
-    }
+      if (!expected) {
+        return { matched: false };
+      }
 
-    if (lastName.toUpperCase() !== expected.lastName || zip !== expected.zip) {
-      return { matched: false };
-    }
+      if (lastName.toUpperCase() !== expected.lastName || zip !== expected.zip) {
+        return { matched: false };
+      }
 
-    return {
-      matched: true,
-      externalContractId: `EXT-${key}`,
-      primaryVinMasked: expected.primaryVinMasked,
-      hasAdditionalVin: expected.hasAdditionalVin,
-      requiresOtp: expected.requiresOtp,
-      maskedDestination: expected.requiresOtp ? '***-***-1234' : undefined,
-      channel: expected.requiresOtp ? 'sms' : undefined,
-    };
+      return {
+        matched: true,
+        externalContractId: `EXT-${key}`,
+        primaryVinMasked: expected.primaryVinMasked,
+        hasAdditionalVin: expected.hasAdditionalVin,
+        requiresOtp: expected.requiresOtp,
+        maskedDestination: expected.requiresOtp ? '***-***-1234' : undefined,
+        channel: expected.requiresOtp ? 'sms' : undefined,
+      };
+    });
   }
 }

@@ -7,6 +7,7 @@ import { interval, switchMap, takeWhile, tap } from 'rxjs';
 
 import { VinService } from '@core/services/vin.service';
 import { DocumentService } from '@core/services/document.service';
+import { RumService } from '@core/services';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import { VinAddStatus, VinRequestStatusData, isTerminalStatus } from '@core/models';
 import {
@@ -312,6 +313,7 @@ export class ResultComponent implements OnInit {
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly rumService = inject(RumService);
 
   // Route parameter
   requestId = input.required<string>();
@@ -353,6 +355,7 @@ export class ResultComponent implements OnInit {
   onDownloadPdf(): void {
     this.isDownloading.set(true);
     this.downloadError.set(null);
+    this.rumService.addAction('document_download');
 
     this.documentService
       .downloadPdf(this.requestId())
@@ -382,6 +385,7 @@ export class ResultComponent implements OnInit {
 
     this.isSendingEmail.set(true);
     this.emailError.set(null);
+    this.rumService.addAction('document_email_submit');
 
     this.documentService
       .emailDocument(this.requestId(), this.emailControl.value!)

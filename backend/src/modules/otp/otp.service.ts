@@ -19,6 +19,7 @@ import { OtpSendDto } from './dto/otp-send.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { AuthService } from '../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 
 @Injectable()
 export class OtpService {
@@ -32,6 +33,7 @@ export class OtpService {
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   async send(
@@ -126,6 +128,7 @@ export class OtpService {
     if (challenge.expiresAt < new Date()) {
       challenge.status = OtpStatus.EXPIRED;
       await this.otpRepo.save(challenge);
+      this.businessMetrics.trackOtpVerify('expired');
       throw new HttpException(
         {
           code: ErrorCodes.OTP_EXPIRED,
@@ -136,6 +139,7 @@ export class OtpService {
     }
 
     if (challenge.status === OtpStatus.LOCKED_OUT) {
+      this.businessMetrics.trackOtpVerify('locked_out');
       throw new HttpException(
         {
           code: ErrorCodes.OTP_LOCKED_OUT,
@@ -162,6 +166,8 @@ export class OtpService {
         userAgent,
       });
 
+      this.businessMetrics.trackOtpVerify('locked_out');
+
       throw new HttpException(
         {
           code: ErrorCodes.OTP_LOCKED_OUT,
@@ -185,6 +191,8 @@ export class OtpService {
         userAgent,
         eventData: { attemptCount: challenge.attemptCount },
       });
+
+      this.businessMetrics.trackOtpVerify('invalid');
 
       throw new HttpException(
         {
@@ -218,6 +226,8 @@ export class OtpService {
       sourceIp,
       userAgent,
     });
+
+    this.businessMetrics.trackOtpVerify('success');
 
     return {
       contractContextId: challenge.contractContextId,

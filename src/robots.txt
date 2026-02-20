@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /authenticate
+Disallow: /vin-entry
+Disallow: /verify-otp
+Disallow: /review
+Disallow: /result
+Disallow: /admin

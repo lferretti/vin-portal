@@ -11,8 +11,11 @@ export class GlobalErrorHandler implements ErrorHandler {
     // Report to Datadog RUM
     this.rumService.addError(error);
 
-    // Log to console in all environments
-    console.error('Unhandled error:', error);
+    // Log to console in dev only (ngDevMode is tree-shaken in production)
+    if (typeof ngDevMode === 'undefined' || ngDevMode) {
+      // eslint-disable-next-line no-console
+      console.error('Unhandled error:', error);
+    }
 
     // Notify user
     const message = error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.';

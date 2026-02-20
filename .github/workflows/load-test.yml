@@ -1,6 +1,7 @@
 name: Load Test
 
 on:
+  # Manual trigger with full configuration
   workflow_dispatch:
     inputs:
       target_url:
@@ -17,6 +18,14 @@ on:
           - staging
           - qa
           - uat
+      profile:
+        description: 'Load profile (smoke = 1 VU / 40s, full = ramped stages)'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - smoke
+          - full
       scenario:
         description: 'Scenario to run (or "all" for all scenarios)'
         required: true
@@ -32,15 +41,27 @@ on:
         required: false
         type: string
 
+  # Nightly full load test against QA
+  schedule:
+    - cron: '0 3 * * 1-5'  # Weekdays at 03:00 UTC
+
 concurrency:
-  group: load-test-${{ github.event.inputs.environment }}
+  group: load-test-${{ github.event.inputs.environment || 'qa' }}
   cancel-in-progress: true
+
+env:
+  # For scheduled runs, default to QA environment values.
+  # These are overridden by workflow_dispatch inputs when triggered manually.
+  LOAD_TARGET_URL: ${{ github.event.inputs.target_url || vars.QA_API_BASE_URL || 'https://api.qa.example.com' }}
+  LOAD_ENVIRONMENT: ${{ github.event.inputs.environment || 'qa' }}
+  LOAD_PROFILE: ${{ github.event.inputs.profile || 'full' }}
+  LOAD_SCENARIO: ${{ github.event.inputs.scenario || 'all' }}
 
 jobs:
   load-test:
-    name: k6 Load Test (${{ github.event.inputs.environment }})
+    name: k6 Load Test (${{ github.event.inputs.environment || 'qa' }} / ${{ github.event.inputs.profile || 'full' }})
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ github.event.inputs.environment || 'qa' }}
 
     steps:
       - name: Checkout
@@ -59,52 +80,94 @@ jobs:
       - name: Verify k6 installation
         run: k6 version
 
-      - name: Run auth-flow scenario
+      - name: Create results directory
+        run: mkdir -p load-tests/results
+
+      # ── Smoke profile: override stages to 1 VU / 40s ──
+      - name: Run auth-flow scenario (smoke)
         if: >-
-          github.event.inputs.scenario == 'all' ||
-          github.event.inputs.scenario == 'auth-flow'
+          env.LOAD_PROFILE == 'smoke' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'auth-flow')
         run: |
           k6 run \
-            -e BASE_URL=${{ github.event.inputs.target_url }} \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
+            --vus 1 --duration 40s \
             --out json=load-tests/results/auth-flow.json \
             --summary-export=load-tests/results/auth-flow-summary.json \
             load-tests/scenarios/auth-flow.js
         continue-on-error: true
 
-      - name: Run vin-flow scenario
+      - name: Run vin-flow scenario (smoke)
         if: >-
-          github.event.inputs.scenario == 'all' ||
-          github.event.inputs.scenario == 'vin-flow'
+          env.LOAD_PROFILE == 'smoke' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'vin-flow')
         run: |
           k6 run \
-            -e BASE_URL=${{ github.event.inputs.target_url }} \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
+            --vus 1 --duration 40s \
             --out json=load-tests/results/vin-flow.json \
             --summary-export=load-tests/results/vin-flow-summary.json \
             load-tests/scenarios/vin-flow.js
         continue-on-error: true
 
-      - name: Run admin-search scenario
+      - name: Run admin-search scenario (smoke)
         if: >-
-          (github.event.inputs.scenario == 'all' ||
-          github.event.inputs.scenario == 'admin-search') &&
+          env.LOAD_PROFILE == 'smoke' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'admin-search') &&
           github.event.inputs.admin_token != ''
         run: |
           k6 run \
-            -e BASE_URL=${{ github.event.inputs.target_url }} \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
+            -e ADMIN_TOKEN=${{ github.event.inputs.admin_token }} \
+            --vus 1 --duration 40s \
+            --out json=load-tests/results/admin-search.json \
+            --summary-export=load-tests/results/admin-search-summary.json \
+            load-tests/scenarios/admin-search.js
+        continue-on-error: true
+
+      # ── Full profile: use load stages defined in each scenario ──
+      - name: Run auth-flow scenario (full)
+        if: >-
+          env.LOAD_PROFILE == 'full' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'auth-flow')
+        run: |
+          k6 run \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
+            --out json=load-tests/results/auth-flow.json \
+            --summary-export=load-tests/results/auth-flow-summary.json \
+            load-tests/scenarios/auth-flow.js
+        continue-on-error: true
+
+      - name: Run vin-flow scenario (full)
+        if: >-
+          env.LOAD_PROFILE == 'full' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'vin-flow')
+        run: |
+          k6 run \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
+            --out json=load-tests/results/vin-flow.json \
+            --summary-export=load-tests/results/vin-flow-summary.json \
+            load-tests/scenarios/vin-flow.js
+        continue-on-error: true
+
+      - name: Run admin-search scenario (full)
+        if: >-
+          env.LOAD_PROFILE == 'full' &&
+          (env.LOAD_SCENARIO == 'all' || env.LOAD_SCENARIO == 'admin-search') &&
+          github.event.inputs.admin_token != ''
+        run: |
+          k6 run \
+            -e BASE_URL=${{ env.LOAD_TARGET_URL }} \
             -e ADMIN_TOKEN=${{ github.event.inputs.admin_token }} \
             --out json=load-tests/results/admin-search.json \
             --summary-export=load-tests/results/admin-search-summary.json \
             load-tests/scenarios/admin-search.js
         continue-on-error: true
 
-      - name: Create results directory if missing
-        if: always()
-        run: mkdir -p load-tests/results
-
       - name: Upload load test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: k6-results-${{ github.event.inputs.environment }}-${{ github.run_number }}
+          name: k6-results-${{ env.LOAD_ENVIRONMENT }}-${{ env.LOAD_PROFILE }}-${{ github.run_number }}
           path: load-tests/results/
           retention-days: 30

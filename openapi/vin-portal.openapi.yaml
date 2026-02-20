@@ -27,6 +27,8 @@ tags:
     description: Step-up verification for suspicious requests
   - name: VIN
     description: VIN decode, eligibility checks, and commit workflow
+  - name: Document
+    description: Confirmation document generation and delivery
   - name: Admin
     description: Internal support/admin endpoints (placeholder; secure behind internal auth)
 
@@ -315,6 +317,137 @@ paths:
                 $ref: '#/components/schemas/EnvelopeError'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /document/request/{requestId}/pdf:
+    get:
+      tags: [Document]
+      summary: Download confirmation PDF
+      description: |
+        Generates and returns a confirmation PDF for a completed VIN add request.
+        The PDF is generated from an AcroForm template (when available) or a
+        fallback layout using pdf-lib. Returns the PDF as a binary download.
+      operationId: downloadConfirmationPdf
+      security:
+        - consumerSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          description: UUID of the VIN add request
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PDF document bytes
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="confirmation-{requestId}.pdf"'
+            Content-Length:
+              schema:
+                type: string
+              description: Size of the PDF in bytes
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: PDF generation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+
+  /document/request/{requestId}/email:
+    post:
+      tags: [Document]
+      summary: Email confirmation PDF
+      description: |
+        Generates the confirmation PDF and emails it to the specified address
+        via AWS SES. The PDF is attached to the email as a file.
+      operationId: emailConfirmationPdf
+      security:
+        - consumerSession: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          description: UUID of the VIN add request
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailDocumentRequest'
+            examples:
+              example:
+                value:
+                  email: "customer@example.com"
+      responses:
+        '200':
+          description: Email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeEmailDocumentResponse'
+        '400':
+          description: Invalid email address
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+              examples:
+                invalidEmail:
+                  value:
+                    correlationId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                    success: false
+                    data: null
+                    error:
+                      code: "VALIDATION_ERROR"
+                      message: "A valid email address is required"
+                      details: null
+        '401':
+          description: Missing/invalid session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: PDF generation or email delivery failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '503':
+          description: Email service unavailable (circuit breaker open)
           content:
             application/json:
               schema:
@@ -790,6 +923,41 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/VinRequestStatusData'
+            error:
+              nullable: true
+
+    # ---------- Document ----------
+    EmailDocumentRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Recipient email address for the confirmation PDF
+
+    EmailDocumentData:
+      type: object
+      required: [requestId, sent, messageId]
+      properties:
+        requestId:
+          type: string
+          format: uuid
+        sent:
+          type: boolean
+          description: Whether the email was successfully sent
+        messageId:
+          type: string
+          description: Message ID from the email provider (e.g., SES message ID)
+
+    EnvelopeEmailDocumentResponse:
+      allOf:
+        - $ref: '#/components/schemas/EnvelopeBase'
+        - type: object
+          required: [data, error]
+          properties:
+            data:
+              $ref: '#/components/schemas/EmailDocumentData'
             error:
               nullable: true
 

@@ -306,7 +306,8 @@ describe('VerifyOtpComponent', () => {
       component.onResend();
       tick();
 
-      expect(component.errorMessage()).toContain('wait before requesting');
+      expect(component.errorMessage()).toContain('Too many attempts');
+      expect(component.rateLimitCooldown()).toBe(60);
       discardPeriodicTasks();
     }));
   });

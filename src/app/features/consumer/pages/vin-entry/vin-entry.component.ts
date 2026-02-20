@@ -6,6 +6,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { filter, switchMap, tap } from 'rxjs';
 
 import { VinService } from '@core/services/vin.service';
+import { RumService } from '@core/services';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import { vinValidator, normalizeVin } from '@shared/validators';
 import {
@@ -132,6 +133,7 @@ export class VinEntryComponent {
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly rumService = inject(RumService);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -204,6 +206,7 @@ export class VinEntryComponent {
     this.isDecoding.set(true);
     this.errorMessage.set(null);
     this.consumerState.clearVinState();
+    this.rumService.addAction('vin_decode_submit');
 
     this.vinService
       .decode({ vin })
@@ -225,6 +228,7 @@ export class VinEntryComponent {
         next: (eligResponse) => {
           this.isCheckingEligibility.set(false);
           if (eligResponse.success && eligResponse.data) {
+            this.rumService.addAction('eligibility_check', { result: eligResponse.data.eligible ? 'eligible' : 'ineligible', reasonCode: eligResponse.data.eligible ? undefined : eligResponse.data.reasonCode });
             this.consumerState.setEligibility(eligResponse.data);
           }
         },

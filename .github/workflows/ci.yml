@@ -291,6 +291,76 @@ jobs:
             --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
             --paths "/index.html"
 
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed frontend
+        id: health-check
+        run: |
+          DEPLOY_URL="${{ vars.DEPLOY_URL }}"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$DEPLOY_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Frontend rollback: re-sync previous S3 artifacts from prior commit ──
+      - name: Rollback frontend to previous version
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back frontend to previous commit's artifacts"
+          PREV_SHA=$(git rev-parse HEAD~1)
+          echo "Previous commit: $PREV_SHA"
+
+          # Check out the previous commit's source to rebuild
+          git checkout "$PREV_SHA" -- .
+
+          # Reinstall and rebuild from the previous commit
+          npm ci --legacy-peer-deps
+          npm run build
+
+          # Remove sourcemaps before deploying rollback
+          find dist/ -name "*.map" -delete
+
+          # Re-deploy the previous build to S3
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Invalidate CloudFront to serve rolled-back content
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/*"
+        env:
+          NODE_ENV: production
+
+      - name: Notify Slack of frontend rollback
+        if: failure() && steps.health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Frontend Rollback Triggered* (DEV)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous version restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
+
   deploy-backend-dev:
     name: Deploy Backend to DEV
     runs-on: ubuntu-latest
@@ -335,6 +405,81 @@ jobs:
             --cluster ${{ vars.ECS_CLUSTER }} \
             --service ${{ vars.ECS_SERVICE }} \
             --force-new-deployment
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed backend
+        id: backend-health-check
+        run: |
+          API_URL="${{ vars.API_BASE_URL }}/health"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Backend health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Backend rollback: force ECS to redeploy the previous task revision ──
+      - name: Rollback backend to previous ECS task revision
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back backend ECS service to previous task revision"
+          # Get the current task definition (the failed one)
+          CURRENT_TD=$(aws ecs describe-services \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current (failed) task definition: $CURRENT_TD"
+
+          # Extract the revision number and compute the previous one
+          CURRENT_REV=$(echo "$CURRENT_TD" | grep -o '[0-9]*$')
+          PREV_REV=$((CURRENT_REV - 1))
+          TD_FAMILY=$(echo "$CURRENT_TD" | sed "s/:${CURRENT_REV}$/:${PREV_REV}/")
+          echo "Rolling back to task definition: $TD_FAMILY"
+
+          # Update the service to use the previous task definition
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --task-definition "$TD_FAMILY" \
+            --force-new-deployment
+
+          # Wait for the rollback deployment to stabilize
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      - name: Notify Slack of backend rollback
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Backend Rollback Triggered* (DEV)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous ECS task revision restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
 
   # ── QA ──
   deploy-qa:
@@ -401,6 +546,76 @@ jobs:
             --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
             --paths "/index.html"
 
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed frontend
+        id: health-check
+        run: |
+          DEPLOY_URL="${{ vars.DEPLOY_URL }}"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$DEPLOY_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Frontend rollback: re-sync previous S3 artifacts from prior commit ──
+      - name: Rollback frontend to previous version
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back frontend to previous commit's artifacts"
+          PREV_SHA=$(git rev-parse HEAD~1)
+          echo "Previous commit: $PREV_SHA"
+
+          # Check out the previous commit's source to rebuild
+          git checkout "$PREV_SHA" -- .
+
+          # Reinstall and rebuild from the previous commit
+          npm ci --legacy-peer-deps
+          npm run build
+
+          # Remove sourcemaps before deploying rollback
+          find dist/ -name "*.map" -delete
+
+          # Re-deploy the previous build to S3
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Invalidate CloudFront to serve rolled-back content
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/*"
+        env:
+          NODE_ENV: production
+
+      - name: Notify Slack of frontend rollback
+        if: failure() && steps.health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Frontend Rollback Triggered* (QA)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous version restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
+
   deploy-backend-qa:
     name: Deploy Backend to QA
     runs-on: ubuntu-latest
@@ -445,6 +660,81 @@ jobs:
             --cluster ${{ vars.ECS_CLUSTER }} \
             --service ${{ vars.ECS_SERVICE }} \
             --force-new-deployment
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed backend
+        id: backend-health-check
+        run: |
+          API_URL="${{ vars.API_BASE_URL }}/health"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Backend health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Backend rollback: force ECS to redeploy the previous task revision ──
+      - name: Rollback backend to previous ECS task revision
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back backend ECS service to previous task revision"
+          # Get the current task definition (the failed one)
+          CURRENT_TD=$(aws ecs describe-services \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current (failed) task definition: $CURRENT_TD"
+
+          # Extract the revision number and compute the previous one
+          CURRENT_REV=$(echo "$CURRENT_TD" | grep -o '[0-9]*$')
+          PREV_REV=$((CURRENT_REV - 1))
+          TD_FAMILY=$(echo "$CURRENT_TD" | sed "s/:${CURRENT_REV}$/:${PREV_REV}/")
+          echo "Rolling back to task definition: $TD_FAMILY"
+
+          # Update the service to use the previous task definition
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --task-definition "$TD_FAMILY" \
+            --force-new-deployment
+
+          # Wait for the rollback deployment to stabilize
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      - name: Notify Slack of backend rollback
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Backend Rollback Triggered* (QA)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous ECS task revision restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
 
   # ── UAT ──
   deploy-uat:
@@ -511,6 +801,76 @@ jobs:
             --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
             --paths "/index.html"
 
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed frontend
+        id: health-check
+        run: |
+          DEPLOY_URL="${{ vars.DEPLOY_URL }}"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$DEPLOY_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Frontend rollback: re-sync previous S3 artifacts from prior commit ──
+      - name: Rollback frontend to previous version
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back frontend to previous commit's artifacts"
+          PREV_SHA=$(git rev-parse HEAD~1)
+          echo "Previous commit: $PREV_SHA"
+
+          # Check out the previous commit's source to rebuild
+          git checkout "$PREV_SHA" -- .
+
+          # Reinstall and rebuild from the previous commit
+          npm ci --legacy-peer-deps
+          npm run build
+
+          # Remove sourcemaps before deploying rollback
+          find dist/ -name "*.map" -delete
+
+          # Re-deploy the previous build to S3
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Invalidate CloudFront to serve rolled-back content
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/*"
+        env:
+          NODE_ENV: production
+
+      - name: Notify Slack of frontend rollback
+        if: failure() && steps.health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Frontend Rollback Triggered* (UAT)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous version restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
+
   deploy-backend-uat:
     name: Deploy Backend to UAT
     runs-on: ubuntu-latest
@@ -555,6 +915,81 @@ jobs:
             --cluster ${{ vars.ECS_CLUSTER }} \
             --service ${{ vars.ECS_SERVICE }} \
             --force-new-deployment
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed backend
+        id: backend-health-check
+        run: |
+          API_URL="${{ vars.API_BASE_URL }}/health"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Backend health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Backend rollback: force ECS to redeploy the previous task revision ──
+      - name: Rollback backend to previous ECS task revision
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back backend ECS service to previous task revision"
+          # Get the current task definition (the failed one)
+          CURRENT_TD=$(aws ecs describe-services \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current (failed) task definition: $CURRENT_TD"
+
+          # Extract the revision number and compute the previous one
+          CURRENT_REV=$(echo "$CURRENT_TD" | grep -o '[0-9]*$')
+          PREV_REV=$((CURRENT_REV - 1))
+          TD_FAMILY=$(echo "$CURRENT_TD" | sed "s/:${CURRENT_REV}$/:${PREV_REV}/")
+          echo "Rolling back to task definition: $TD_FAMILY"
+
+          # Update the service to use the previous task definition
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --task-definition "$TD_FAMILY" \
+            --force-new-deployment
+
+          # Wait for the rollback deployment to stabilize
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      - name: Notify Slack of backend rollback
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Backend Rollback Triggered* (UAT)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous ECS task revision restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
 
   # ── PROD ──
   deploy-prod:
@@ -621,6 +1056,76 @@ jobs:
             --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
             --paths "/index.html"
 
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed frontend
+        id: health-check
+        run: |
+          DEPLOY_URL="${{ vars.DEPLOY_URL }}"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$DEPLOY_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Frontend rollback: re-sync previous S3 artifacts from prior commit ──
+      - name: Rollback frontend to previous version
+        if: failure() && steps.health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back frontend to previous commit's artifacts"
+          PREV_SHA=$(git rev-parse HEAD~1)
+          echo "Previous commit: $PREV_SHA"
+
+          # Check out the previous commit's source to rebuild
+          git checkout "$PREV_SHA" -- .
+
+          # Reinstall and rebuild from the previous commit
+          npm ci --legacy-peer-deps
+          npm run build
+
+          # Remove sourcemaps before deploying rollback
+          find dist/ -name "*.map" -delete
+
+          # Re-deploy the previous build to S3
+          aws s3 sync dist/vin-portal/browser/ s3://${{ vars.S3_BUCKET }}/ \
+            --delete \
+            --cache-control "max-age=31536000,immutable" \
+            --exclude "index.html"
+          aws s3 cp dist/vin-portal/browser/index.html s3://${{ vars.S3_BUCKET }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          # Invalidate CloudFront to serve rolled-back content
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --paths "/*"
+        env:
+          NODE_ENV: production
+
+      - name: Notify Slack of frontend rollback
+        if: failure() && steps.health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Frontend Rollback Triggered* (PROD)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous version restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
+
   deploy-backend-prod:
     name: Deploy Backend to PROD
     runs-on: ubuntu-latest
@@ -665,3 +1170,285 @@ jobs:
             --cluster ${{ vars.ECS_CLUSTER }} \
             --service ${{ vars.ECS_SERVICE }} \
             --force-new-deployment
+
+      - name: Wait for ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      # ── Post-deploy health check ──
+      # Rollback criteria: 5xx > 5% for 5 min or RUM error rate > 10%
+      - name: Health check deployed backend
+        id: backend-health-check
+        run: |
+          API_URL="${{ vars.API_BASE_URL }}/health"
+          MAX_RETRIES=5
+          RETRY_INTERVAL=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$API_URL")
+            echo "Attempt $i/$MAX_RETRIES: HTTP $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            if [ "$i" -lt "$MAX_RETRIES" ]; then
+              echo "Retrying in ${RETRY_INTERVAL}s..."
+              sleep $RETRY_INTERVAL
+            fi
+          done
+          echo "::error::Backend health check failed after $MAX_RETRIES attempts"
+          exit 1
+
+      # ── Backend rollback: force ECS to redeploy the previous task revision ──
+      - name: Rollback backend to previous ECS task revision
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        run: |
+          echo "::warning::Rolling back backend ECS service to previous task revision"
+          # Get the current task definition (the failed one)
+          CURRENT_TD=$(aws ecs describe-services \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }} \
+            --query 'services[0].taskDefinition' --output text)
+          echo "Current (failed) task definition: $CURRENT_TD"
+
+          # Extract the revision number and compute the previous one
+          CURRENT_REV=$(echo "$CURRENT_TD" | grep -o '[0-9]*$')
+          PREV_REV=$((CURRENT_REV - 1))
+          TD_FAMILY=$(echo "$CURRENT_TD" | sed "s/:${CURRENT_REV}$/:${PREV_REV}/")
+          echo "Rolling back to task definition: $TD_FAMILY"
+
+          # Update the service to use the previous task definition
+          aws ecs update-service \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --service ${{ vars.ECS_SERVICE }} \
+            --task-definition "$TD_FAMILY" \
+            --force-new-deployment
+
+          # Wait for the rollback deployment to stabilize
+          aws ecs wait services-stable \
+            --cluster ${{ vars.ECS_CLUSTER }} \
+            --services ${{ vars.ECS_SERVICE }}
+        timeout-minutes: 10
+
+      - name: Notify Slack of backend rollback
+        if: failure() && steps.backend-health-check.outcome == 'failure'
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"text\": \":rotating_light: *Backend Rollback Triggered* (PROD)\nCommit: \`${{ github.sha }}\`\nWorkflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nHealth check failed after 5 retries. Previous ECS task revision restored.\"
+              }"
+          else
+            echo "SLACK_WEBHOOK_URL not configured — skipping notification"
+          fi
+
+  # ──────────────────────────────────────────────
+  # Post-Deploy Smoke Tests
+  # ──────────────────────────────────────────────
+  # Runs Playwright @smoke tests against each deployed environment
+  # to verify the application is functional after deployment.
+  # Requires DEPLOY_URL to be set as a variable in the GitHub
+  # environment (e.g. https://dev.vinportal.example.com).
+
+  smoke-dev:
+    name: Smoke Test DEV
+    runs-on: ubuntu-latest
+    needs: [deploy-dev, deploy-backend-dev]
+    if: github.ref == 'refs/heads/DEV' && github.event_name == 'push'
+    environment: dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests against DEV
+        run: npx playwright test --grep @smoke --project=chromium
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-dev
+          path: playwright-report/
+          retention-days: 7
+
+  smoke-qa:
+    name: Smoke Test QA
+    runs-on: ubuntu-latest
+    needs: [deploy-qa, deploy-backend-qa]
+    if: github.ref == 'refs/heads/QA' && github.event_name == 'push'
+    environment: qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests against QA
+        run: npx playwright test --grep @smoke --project=chromium
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-qa
+          path: playwright-report/
+          retention-days: 7
+
+  smoke-uat:
+    name: Smoke Test UAT
+    runs-on: ubuntu-latest
+    needs: [deploy-uat, deploy-backend-uat]
+    if: github.ref == 'refs/heads/UAT' && github.event_name == 'push'
+    environment: uat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests against UAT
+        run: npx playwright test --grep @smoke --project=chromium
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-uat
+          path: playwright-report/
+          retention-days: 7
+
+  smoke-prod:
+    name: Smoke Test PROD
+    runs-on: ubuntu-latest
+    needs: [deploy-prod, deploy-backend-prod]
+    if: github.ref == 'refs/heads/PROD' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests against PROD
+        run: npx playwright test --grep @smoke --project=chromium
+        env:
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report-prod
+          path: playwright-report/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────
+  # Post-Deploy Load Test Smoke (QA only)
+  # ──────────────────────────────────────────────
+  # Runs a lightweight k6 smoke profile (1 VU, 40s) after QA deploy
+  # to verify API performance is within SLA thresholds.
+  # Full load tests run on a nightly schedule via load-test.yml.
+
+  load-test-smoke-qa:
+    name: Load Test Smoke (QA)
+    runs-on: ubuntu-latest
+    needs: [smoke-qa]
+    if: github.ref == 'refs/heads/QA' && github.event_name == 'push'
+    environment: qa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Create results directory
+        run: mkdir -p load-tests/results
+
+      - name: Run auth-flow smoke
+        run: |
+          k6 run \
+            -e BASE_URL=${{ vars.API_BASE_URL }} \
+            --vus 1 --duration 40s \
+            --summary-export=load-tests/results/auth-flow-smoke.json \
+            load-tests/scenarios/auth-flow.js
+
+      - name: Run vin-flow smoke
+        run: |
+          k6 run \
+            -e BASE_URL=${{ vars.API_BASE_URL }} \
+            --vus 1 --duration 40s \
+            --summary-export=load-tests/results/vin-flow-smoke.json \
+            load-tests/scenarios/vin-flow.js
+
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-smoke-results-qa-${{ github.run_number }}
+          path: load-tests/results/
+          retention-days: 14

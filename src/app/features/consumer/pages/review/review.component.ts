@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 
 import { VinService } from '@core/services/vin.service';
+import { RumService } from '@core/services';
 import { ConsumerStateService } from '../../state/consumer-state.service';
 import {
   HeaderComponent,
@@ -157,6 +158,7 @@ export class ReviewComponent {
   private readonly consumerState = inject(ConsumerStateService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly rumService = inject(RumService);
 
   readonly steps: StepConfig[] = [
     { id: 'auth', label: 'Authenticate' },
@@ -195,6 +197,7 @@ export class ReviewComponent {
 
     this.isCommitting.set(true);
     this.errorMessage.set(null);
+    this.rumService.addAction('vin_commit_submit');
 
     this.vinService
       .commit({ vin, acceptIrreversible: true }, idempotencyKey)
@@ -204,6 +207,7 @@ export class ReviewComponent {
           this.isCommitting.set(false);
 
           if (response.success && response.data) {
+            this.rumService.addAction('vin_commit_success');
             this.consumerState.setCommitResult(response.data);
             this.router.navigate(['/result', response.data.requestId]);
           }

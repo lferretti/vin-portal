@@ -21,6 +21,7 @@ import { hashContractNumber, hashOtpCode } from '../../common/utils/hash.util';
 import { AuthenticateContractDto } from './dto/authenticate-contract.dto';
 import { AuthService } from '../auth/auth.service';
 import { AuditService } from '../audit/audit.service';
+import { BusinessMetricsService } from '../../common/services/business-metrics.service';
 import {
   CONTRACT_VERIFICATION_ADAPTER,
 } from '../../adapters/adapter.tokens';
@@ -44,6 +45,7 @@ export class ContractService {
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    private readonly businessMetrics: BusinessMetricsService,
   ) {}
 
   async authenticate(
@@ -89,6 +91,8 @@ export class ContractService {
         eventData: { reason: ErrorCodes.AUTH_NO_MATCH },
       });
 
+      this.businessMetrics.trackAuthAttempt('no_match');
+
       throw new HttpException(
         {
           code: ErrorCodes.AUTH_NO_MATCH,
@@ -127,6 +131,8 @@ export class ContractService {
         failureReason: ErrorCodes.CONTRACT_LOCKED,
         correlationId,
       });
+
+      this.businessMetrics.trackAuthAttempt('locked');
 
       throw new HttpException(
         {
@@ -175,6 +181,8 @@ export class ContractService {
         userAgent,
       });
 
+      this.businessMetrics.trackAuthAttempt('otp_required');
+
       throw new HttpException(
         {
           code: ErrorCodes.AUTH_OTP_REQUIRED,
@@ -216,6 +224,8 @@ export class ContractService {
       userAgent,
     });
 
+    this.businessMetrics.trackAuthAttempt('success');
+
     return {
       contractContextId: contractContext.id,
       sessionToken: token,
@@ -248,6 +258,7 @@ export class ContractService {
     });
 
     if (count >= maxAttempts) {
+      this.businessMetrics.trackAuthAttempt('rate_limited');
       throw new HttpException(
         {
           code: ErrorCodes.RATE_LIMITED,

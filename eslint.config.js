@@ -36,6 +36,7 @@ module.exports = tseslint.config(
         },
       ],
       "@typescript-eslint/no-explicit-any": "error",
+      "no-console": "error",
       "local/no-form-input-modifier": "error",
       "tailwindcss/classnames-order": "warn",
     },
@@ -43,6 +44,12 @@ module.exports = tseslint.config(
       tailwindcss: {
         config: {},
       },
+    },
+  },
+  {
+    files: ["**/*.spec.ts", "**/*.e2e-spec.ts", "e2e/**/*.ts"],
+    rules: {
+      "no-console": "off",
     },
   },
   {

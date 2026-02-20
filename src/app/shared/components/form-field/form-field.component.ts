@@ -1,8 +1,20 @@
-import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  input,
+  computed,
+  ElementRef,
+  inject,
+  effect,
+} from '@angular/core';
 import { FormControl } from '@angular/forms';
 
 /**
- * Reusable form field component with label, hint, and error handling
+ * Reusable form field component with label, hint, and error handling.
+ *
+ * Automatically sets `aria-describedby` and `aria-invalid` on projected
+ * `<input>`, `<select>`, and `<textarea>` elements so callers do not
+ * need to wire those attributes manually.
  */
 @Component({
   selector: 'app-form-field',
@@ -33,6 +45,8 @@ import { FormControl } from '@angular/forms';
   `,
 })
 export class FormFieldComponent {
+  private readonly el = inject(ElementRef);
+
   label = input<string>('');
   hint = input<string>('');
   control = input<FormControl | null>(null);
@@ -44,6 +58,48 @@ export class FormFieldComponent {
 
   hintId = computed(() => `${this.fieldId()}-hint`);
   errorId = computed(() => `${this.fieldId()}-error`);
+
+  /**
+   * Computed aria-describedby value that references the hint or error element.
+   * Exposed publicly so callers can also use it directly if needed.
+   */
+  describedBy = computed(() => {
+    if (this.showError()) return this.errorId();
+    if (this.hint()) return this.hintId();
+    return '';
+  });
+
+  constructor() {
+    // Effect runs whenever showError, hint, or describedBy changes,
+    // updating projected input ARIA attributes automatically.
+    effect(() => {
+      const isInvalid = this.showError();
+      const describedBy = this.describedBy();
+      this.updateProjectedInputAria(describedBy, !!isInvalid);
+    });
+  }
+
+  /**
+   * Finds the projected input/select/textarea element inside this component
+   * and sets its `aria-describedby` and `aria-invalid` attributes.
+   */
+  private updateProjectedInputAria(describedBy: string, invalid: boolean): void {
+    const host: HTMLElement = this.el.nativeElement;
+    const input = host.querySelector('input, select, textarea');
+    if (!input) return;
+
+    if (describedBy) {
+      input.setAttribute('aria-describedby', describedBy);
+    } else {
+      input.removeAttribute('aria-describedby');
+    }
+
+    if (invalid) {
+      input.setAttribute('aria-invalid', 'true');
+    } else {
+      input.removeAttribute('aria-invalid');
+    }
+  }
 
   showError = computed(() => {
     const ctrl = this.control();

@@ -17,6 +17,7 @@ import { DocumentModule } from './modules/document/document.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { WorkerModule } from './modules/worker/worker.module';
 import { StubsModule } from './adapters/stubs.module';
+import { BusinessMetricsModule } from './common/services/business-metrics.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { StubsModule } from './adapters/stubs.module';
       }),
     }),
     ScheduleModule.forRoot(),
+    BusinessMetricsModule,
     HealthModule,
     AuthModule,
     AuditModule,

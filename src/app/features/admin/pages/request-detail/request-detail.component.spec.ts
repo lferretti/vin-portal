@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { signal } from '@angular/core';
 import { of, throwError } from 'rxjs';
 import { RequestDetailComponent } from './request-detail.component';
 import { AdminService } from '@core/services/admin.service';
+import { AdminSessionService } from '@core/services';
 import {
   ApiEnvelope,
   AdminRequestDetailData,
@@ -17,6 +19,9 @@ describe('RequestDetailComponent', () => {
     getRequestDetail: jest.Mock;
     addNote: jest.Mock;
     searchContracts: jest.Mock;
+  };
+  let adminSessionMock: {
+    role: ReturnType<typeof signal>;
   };
 
   const mockRequestDetail: AdminRequestDetailData = {
@@ -37,6 +42,8 @@ describe('RequestDetailComponent', () => {
         eventType: 'AUTH_SUCCESS',
         createdAt: '2026-01-15T09:00:00Z',
         actorType: 'CONSUMER',
+        sourceIp: '192.168.1.42',
+        userAgent: 'Mozilla/5.0 TestBrowser',
       },
       {
         eventType: 'VIN_DECODE',
@@ -73,11 +80,16 @@ describe('RequestDetailComponent', () => {
       searchContracts: jest.fn(),
     };
 
+    adminSessionMock = {
+      role: signal<string | null>('admin'),
+    };
+
     await TestBed.configureTestingModule({
       imports: [RequestDetailComponent],
       providers: [
         provideRouter([]),
         { provide: AdminService, useValue: adminServiceMock },
+        { provide: AdminSessionService, useValue: adminSessionMock },
       ],
     }).compileComponents();
 
@@ -407,4 +419,36 @@ describe('RequestDetailComponent', () => {
     const content = fixture.nativeElement.textContent;
     expect(content).toContain('CLASS_TOO_HIGH');
   }));
+
+  describe('role-based audit field visibility', () => {
+    it('should show IP and User Agent when role is admin', fakeAsync(() => {
+      adminSessionMock.role.set('admin');
+      tick();
+      fixture.detectChanges();
+
+      const content = fixture.nativeElement.textContent;
+      expect(content).toContain('IP: 192.168.1.42');
+      expect(content).toContain('UA: Mozilla/5.0 TestBrowser');
+    }));
+
+    it('should hide IP and User Agent when role is support', fakeAsync(() => {
+      adminSessionMock.role.set('support');
+      tick();
+      fixture.detectChanges();
+
+      const content = fixture.nativeElement.textContent;
+      expect(content).not.toContain('IP: 192.168.1.42');
+      expect(content).not.toContain('UA: Mozilla/5.0 TestBrowser');
+    }));
+
+    it('should have isSecurityAdmin true when role is admin', () => {
+      adminSessionMock.role.set('admin');
+      expect(component.isSecurityAdmin()).toBe(true);
+    });
+
+    it('should have isSecurityAdmin false when role is support', () => {
+      adminSessionMock.role.set('support');
+      expect(component.isSecurityAdmin()).toBe(false);
+    });
+  });
 });

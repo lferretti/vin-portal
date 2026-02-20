@@ -1,9 +1,10 @@
-import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, OnInit, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, signal, computed, OnInit, input } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { AdminService } from '@core/services/admin.service';
+import { AdminSessionService } from '@core/services';
 import { AdminRequestDetailData } from '@core/models';
 import {
   AlertBannerComponent,
@@ -157,6 +158,14 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
                           class="mt-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-600"
                         >{{ event.eventData | json }}</pre>
                       }
+                      @if (isSecurityAdmin()) {
+                        @if (event.sourceIp) {
+                          <span class="text-xs text-slate-500">IP: {{ event.sourceIp }}</span>
+                        }
+                        @if (event.userAgent) {
+                          <span class="text-xs text-slate-500">UA: {{ event.userAgent }}</span>
+                        }
+                      }
                     </div>
                   }
                 </div>
@@ -219,7 +228,10 @@ import { formatStatus, getStatusBadgeClass } from '@shared/utils/status-badge.ut
 })
 export class RequestDetailComponent implements OnInit {
   private readonly adminService = inject(AdminService);
+  private readonly adminSession = inject(AdminSessionService);
   private readonly destroyRef = inject(DestroyRef);
+
+  readonly isSecurityAdmin = computed(() => this.adminSession.role() === 'admin');
 
   requestId = input.required<string>();
 

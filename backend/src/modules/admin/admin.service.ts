@@ -142,6 +142,7 @@ export class AdminService {
     correlationId: string,
     sourceIp: string,
     userAgent: string,
+    callerRole: string = 'support',
   ) {
     const request = await this.requestRepo.findOne({
       where: { id: requestId },
@@ -176,6 +177,8 @@ export class AdminService {
       userAgent,
     });
 
+    const showRestrictedFields = callerRole === 'admin';
+
     return {
       requestId: request.id,
       contractContextId: request.contractContextId,
@@ -189,8 +192,8 @@ export class AdminService {
         eventType: e.eventType,
         createdAt: e.createdAt.toISOString(),
         actorType: e.actorType,
-        sourceIp: e.sourceIp,
-        userAgent: e.userAgent,
+        sourceIp: showRestrictedFields ? e.sourceIp : undefined,
+        userAgent: showRestrictedFields ? e.userAgent : undefined,
         eventData: e.eventData,
       })),
     };

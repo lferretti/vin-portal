@@ -90,21 +90,35 @@ describe('AdminController', () => {
   });
 
   describe('getRequestDetail', () => {
+    const defaultReq = { user: { role: 'support' } };
+
     it('should call adminService.getRequestDetail with requestId', async () => {
-      await controller.getRequestDetail('req-1', correlationId, ip, userAgent);
-      expect(adminService.getRequestDetail).toHaveBeenCalledWith('req-1', correlationId, ip, userAgent);
+      await controller.getRequestDetail('req-1', correlationId, ip, userAgent, defaultReq);
+      expect(adminService.getRequestDetail).toHaveBeenCalledWith('req-1', correlationId, ip, userAgent, 'support');
     });
 
     it('should return the service response', async () => {
-      const result = await controller.getRequestDetail('req-1', correlationId, ip, userAgent);
+      const result = await controller.getRequestDetail('req-1', correlationId, ip, userAgent, defaultReq);
       expect(result.requestId).toBe('req-1');
     });
 
     it('should propagate service errors', async () => {
       adminService.getRequestDetail.mockRejectedValue(new Error('Not found'));
       await expect(
-        controller.getRequestDetail('req-1', correlationId, ip, userAgent),
+        controller.getRequestDetail('req-1', correlationId, ip, userAgent, defaultReq),
       ).rejects.toThrow('Not found');
+    });
+
+    it('should pass caller role from request user', async () => {
+      const req = { user: { role: 'admin' } };
+      await controller.getRequestDetail('req-1', correlationId, ip, userAgent, req as never);
+      expect(adminService.getRequestDetail).toHaveBeenCalledWith('req-1', correlationId, ip, userAgent, 'admin');
+    });
+
+    it('should default to support role when user has no role', async () => {
+      const req = { user: {} };
+      await controller.getRequestDetail('req-1', correlationId, ip, userAgent, req as never);
+      expect(adminService.getRequestDetail).toHaveBeenCalledWith('req-1', correlationId, ip, userAgent, 'support');
     });
   });
 

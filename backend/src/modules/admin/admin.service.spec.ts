@@ -232,6 +232,60 @@ describe('AdminService', () => {
       expect(result.vin).toBe('1HGBH41JXMN109186');
       expect(result.decoded).toEqual({ year: 2023, make: 'Honda', model: 'Civic' });
     });
+
+    it('should include sourceIp and userAgent in audit events for admin role', async () => {
+      requestRepo.findOne.mockResolvedValue(mockRequest);
+      auditEventRepo.find.mockResolvedValue([
+        {
+          eventType: 'VIN_DECODED',
+          createdAt: new Date('2026-01-01'),
+          actorType: 'CONSUMER',
+          sourceIp: '192.168.1.1',
+          userAgent: 'Mozilla/5.0',
+          eventData: {},
+        },
+      ]);
+
+      const result = await service.getRequestDetail('req-1', correlationId, sourceIp, userAgent, 'admin');
+      expect(result.audit[0].sourceIp).toBe('192.168.1.1');
+      expect(result.audit[0].userAgent).toBe('Mozilla/5.0');
+    });
+
+    it('should strip sourceIp and userAgent from audit events for support role', async () => {
+      requestRepo.findOne.mockResolvedValue(mockRequest);
+      auditEventRepo.find.mockResolvedValue([
+        {
+          eventType: 'VIN_DECODED',
+          createdAt: new Date('2026-01-01'),
+          actorType: 'CONSUMER',
+          sourceIp: '192.168.1.1',
+          userAgent: 'Mozilla/5.0',
+          eventData: {},
+        },
+      ]);
+
+      const result = await service.getRequestDetail('req-1', correlationId, sourceIp, userAgent, 'support');
+      expect(result.audit[0].sourceIp).toBeUndefined();
+      expect(result.audit[0].userAgent).toBeUndefined();
+    });
+
+    it('should default to support role when callerRole is not provided', async () => {
+      requestRepo.findOne.mockResolvedValue(mockRequest);
+      auditEventRepo.find.mockResolvedValue([
+        {
+          eventType: 'VIN_DECODED',
+          createdAt: new Date('2026-01-01'),
+          actorType: 'CONSUMER',
+          sourceIp: '192.168.1.1',
+          userAgent: 'Mozilla/5.0',
+          eventData: {},
+        },
+      ]);
+
+      const result = await service.getRequestDetail('req-1', correlationId, sourceIp, userAgent);
+      expect(result.audit[0].sourceIp).toBeUndefined();
+      expect(result.audit[0].userAgent).toBeUndefined();
+    });
   });
 
   describe('addNote', () => {

@@ -9,6 +9,7 @@ import {
   Headers,
   UseGuards,
   ParseUUIDPipe,
+  Req,
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminSearchQueryDto } from './dto/admin-search-query.dto';
@@ -47,8 +48,10 @@ export class AdminController {
     @CorrelationId() correlationId: string,
     @Ip() ip: string,
     @Headers('user-agent') userAgent: string,
+    @Req() req: { user?: { role?: string } },
   ) {
-    return this.adminService.getRequestDetail(requestId, correlationId, ip, userAgent);
+    const callerRole = req.user?.role ?? 'support';
+    return this.adminService.getRequestDetail(requestId, correlationId, ip, userAgent, callerRole);
   }
 
   @Post('requests/:requestId/note')

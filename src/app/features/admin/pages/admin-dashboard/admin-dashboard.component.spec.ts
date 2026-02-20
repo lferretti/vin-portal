@@ -73,21 +73,25 @@ describe('AdminDashboardComponent', () => {
     expect(statusCard).toBeTruthy();
   });
 
-  it('should show all status values in the reference table', () => {
-    const statusLabels = fixture.nativeElement.querySelectorAll('dt');
-    const labels = Array.from<HTMLElement>(statusLabels).map((dt) => dt.textContent?.trim());
-    expect(labels).toContain('Not Used');
-    expect(labels).toContain('Pending');
-    expect(labels).toContain('Committed');
-    expect(labels).toContain('Failed');
+  it('should show all 7 status badges in the reference section', () => {
+    const content = fixture.nativeElement.textContent;
+    expect(content).toContain('NOT_USED');
+    expect(content).toContain('PENDING');
+    expect(content).toContain('COMMITTED_LOCKED');
+    expect(content).toContain('FAILED_INELIGIBLE');
+    expect(content).toContain('FAILED_DEPENDENCY');
+    expect(content).toContain('FAILED_VALIDATION');
+    expect(content).toContain('CANCELLED');
   });
 
-  it('should show status badge values', () => {
-    const badges = fixture.nativeElement.querySelectorAll('dd span');
-    const badgeTexts = Array.from<HTMLElement>(badges).map((span) => span.textContent?.trim());
-    expect(badgeTexts).toContain('NOT_USED');
-    expect(badgeTexts).toContain('PENDING');
-    expect(badgeTexts).toContain('COMMITTED');
-    expect(badgeTexts).toContain('FAILED');
+  it('should show descriptions for all 7 statuses', () => {
+    const content = fixture.nativeElement.textContent;
+    expect(content).toContain('Contract authenticated, no VIN commit started.');
+    expect(content).toContain('VIN commit accepted, awaiting dependency confirmation.');
+    expect(content).toContain('VIN committed successfully. Contract permanently locked.');
+    expect(content).toContain('Eligibility rules denied the VIN');
+    expect(content).toContain('External dependency unreachable after all retries.');
+    expect(content).toContain('VIN failed format or decode validation.');
+    expect(content).toContain('Manually cancelled');
   });
 });
